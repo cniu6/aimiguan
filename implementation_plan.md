@@ -70,24 +70,48 @@
 #### [新建] `services/scanner.py` (扫描任务队列)
 - **调度机制**: 由于 Nmap 扫描耗时较长，通过 `asyncio.create_task` 或简单的任务队列管理扫描任务。
 - **扫描参数**: 仅支持常用命令组合 (如 `-sS -sV -p 1-65535`)，避免复杂命令注入。
+- **漏洞扫描支持 (NSE)**:
+    - 通过 `--script` 参数调用 Nmap 脚本引擎。
+    - 示例：`--script smb-vuln-ms17-010` (永恒之蓝) 或 `--script vuln` (通用漏洞扫描)。
 - **结果处理**:
     1.  解析 Nmap XML 输出 (使用 `python-nmap` 库)。
     2.  提取 `<host>`, `<port>`, `<service>`, `<script>` (漏洞信息)。
     3.  结构化存入 `ScanResult` 表。
     4.  触发 AI 分析 (生成修复建议)。
 
-### 前端 (Vue 3 + Vite)
+### 前端 (Vue 3 + Vite + Shadcn UI)
 目录结构: `/frontend`
 #### [新建] `src/router/index.ts`
 - Hash 模式路由 `createWebHashHistory()`。
 
 #### [新建] `src/views/`
-- `DefenseDashboard.vue`: 实时威胁情报流。
-- `ScanManager.vue`: 资产列表, 扫描结果展示。
-- `AICenter.vue`: AI 对话与报告中心。
+1.  **DefenseDashboard.vue (防御监控)**:
+    - **UI 组件**: `StatsCard` (今日攻击数, 封禁数), `DataTable` (实时威胁列表), `Dialog` (封禁确认弹窗).
+    - **功能**: 
+        - 实时刷新 HFish 告警。
+        - **待办区**: 高亮显示 "Pending Review" 的事件，由 AI 给出建议，管理员点击 "Approve/Reject"。
+2.  **ScanManager.vue (资产与扫描)**:
+    - **UI 组件**: `AssetTable` (资产列表), `ScanConfigModal` (扫描配置弹窗), `VulnReportCard` (漏洞详情卡片).
+    - **可视化 (Visualization)**:
+        - **网络拓扑图 (Topology)**: 使用 `Cytoscape.js` 或 `ECharts` 展示主机间的关联关系和开放端口。
+        - **端口矩阵 (Port Matrix)**: 热力图展示各主机的端口开放情况 (红=高危, 绿=安全)。
+        - **漏洞分布 (Vuln Pie Chart)**: 饼图展示高/中/低危漏洞占比。
+    - **功能**: 新增扫描任务 (支持勾选 Script)，查看 Nmap 原始输出与 AI 解读。
+3.  **AICenter.vue (AI 中枢)**:
+    - **UI 组件**: `ChatInterface` (对话框), `ReportGenerator` (报告配置).
+    - **AI 对话 (Chat)**:
+        - **上下文感知**: 自动带入当前选中的 IP 或扫描任务作为 context。
+        - **示例问答**: “IP 1.2.3.4 为什么被报高危？”，“这个 Samba 漏洞怎么修？”。
+        - **追问机制**: 支持多轮对话，深入分析问题。
+    - **AI 报告 (Report)**:
+        - **日报/周报**: 自动汇总当日拦截数、高危资产数。
+        - **格式**: 生成 Markdown/PDF 下载。
+    - **功能**: 与 AI 对话 ("分析 IP 1.2.3.4"), 生成并下载 PDF/Markdown 报告。
 
 #### [新建] `src/components/`
-- Shadcn-vue & AI-Elements-vue 组件集成。
+- `Header.vue`: 全局导航与状态栏 (系统健康度)。
+- `ThemeToggle.vue`: 深色模式切换 (黑客风格)。
+- `LogViewer.vue`: 滚动展示执行日志 (Telnet 交互过程)。
 
 ### 基础设施
 #### [新建] `requirements.txt`
