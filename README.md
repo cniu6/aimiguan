@@ -86,6 +86,66 @@
 - `api/tts.py`: 语音任务提交、状态跟踪。
 - `api/firewall.py`: 外部防火墙同步下发与回执。
 
+### HFish 数据源最小字段协议（Collector 层）
+- 适用范围：仅作为 `collector` 的数据来源适配，不扩展独立功能页。
+- 入站响应兼容：
+  - 外层兼容：`response_code`, `verbose_msg`, `data.page_no`, `data.page_size`, `data.total_num`, `data.sort`, `data.order`。
+  - 列表兼容：`data.list_infos[]`（攻击来源聚合视图）。
+  - 详情兼容：`data.attack_infos[]`（攻击明细视图）。
+  - 趋势兼容：`data.attack_trend[]`（时间序列）。
+- 统一采集字段（Canonical Event）：
+  - `source_vendor`: 固定 `hfish`。
+  - `source_type`: `attack_source | attack_detail | attack_credential`。
+  - `source_event_id`: 优先 `info_id`，否则 `client_id + attack_ip + attack_time/last_attack_time` 组合生成。
+  - `attack_ip`: 映射 `attack_ip`（必填）。
+  - `attack_time`: 优先 `attack_time`，否则 `last_attack_time`（秒级时间戳统一转 UTC）。
+  - `attack_count`: 优先 `attack_count`，详情无该字段时默认 `1`。
+  - `threat_label`: 映射 `labels`，为空则回退 `labels_cn`，再回退 `unknown`。
+  - `asset_ip`: 优先 `victim_ip`，否则 `client_ip`。
+  - `service_name`: 映射 `service_name`。
+  - `service_type`: 映射 `service_type`。
+  - `is_white`: 映射 `is_white`，缺失默认 `false`。
+  - `country/region/city`: 原样保留（为空允许）。
+  - `raw_payload`: 保存完整原始 JSON。
+  - `extra_json`: 保存未映射字段与前端临时字段。
+
+#### HFish 列表数据映射（`data.list_infos[]`）
+- 字段映射：
+  - `client_id -> source_client_id`
+  - `client_name -> source_client_name`
+  - `client_ip -> asset_ip`
+  - `service_class/service_type/service_name -> service_*`
+  - `attack_ip -> attack_ip`
+  - `attack_count -> attack_count`
+  - `last_attack_time -> attack_time`
+  - `labels/labels_cn -> threat_label/threat_label_cn`
+  - `country_code/country/region/city -> geo_*`
+  - `intranet/marked/service_status/is_white -> flags.*`
+
+#### HFish 详情数据映射（`data.attack_infos[]`）
+- 字段映射：
+  - `info_id -> source_event_id`
+  - `attack_ip/attack_port/attack_time -> attack_ip/attack_port/attack_time`
+  - `victim_ip -> asset_ip`
+  - `attack_rule[] -> rule_hits[]`
+  - `credentials/commands/un_commands/files -> artifacts.*`
+  - `session/login_result/duration/collected -> session_meta.*`
+  - `info.method/info.url/info.status_code/info.user_agent -> http_meta.*`
+  - `info.header/info.body/content_type -> http_raw.*`
+  - `info_len -> payload_size`
+
+#### HFish 趋势数据映射（`data.attack_trend[]`）
+- 字段映射：
+  - `attack_time (yyyy-mm-dd HH:MM:SS) -> trend_time`（按配置时区转 UTC）
+  - `attack_count -> trend_count`
+- 用途：仅用于看板统计，不直接写入 `threat_event` 明细表。
+
+#### 与前端临时预览数据的兼容约定
+- 前端预览字段可能先于后端 API 稳定；解析器按“已知字段映射 + 其余字段入 `extra_json`”处理。
+- 任何新增字段默认不丢弃，保留在 `raw_payload`，避免后续二次回采。
+- `response_code != 0` 视为源端失败，按 `502xx` 记录并重试。
+- 仅 `attack_ip` 缺失判定为无效记录，其余缺失使用默认值并保留原始字段。
+
 ### 建议通用错误码
 - `0`: 成功。
 - `400xx`: 参数与校验错误。
@@ -243,7 +303,7 @@ AimiGuard（AI安全运营平台）
 5. Web 面板提供 AI 对话、AI 分析看板、AI 报告中心和全链路审计。
 
 ## 主流程（如图）
-### A. 防御监控流程
+### A. 防御监控流程（概览）
 1. `hifi 蜜罐` 与 `黑名单数据 API` 产生可疑 IP。
 2. 数据标准化后写入 `SQLite` 临时缓存。
 3. AI 输出风险评分、动作建议与理由。
@@ -252,18 +312,376 @@ AimiGuard（AI安全运营平台）
 6. 按逻辑顺序执行封禁（支持失败重试与回滚标记）。
 7. Web 展示执行状态、AI 分析与处置报告。
 
-### B. 探测扫描流程（主动）
+### B. 探测扫描流程（主动，概览）
 1. 配置扫描目标（单 IP、网段、资产组）。
 2. 任务编排器调用 Kali/MCP/漏洞工具执行扫描。
 3. 采集端口、服务、漏洞、弱口令等结果并写入 `SQLite`。
 4. AI 对扫描结果做风险分级、漏洞关联与修复建议。
 5. 输出扫描报告（摘要版 + 详细版），支持导出与审计存档。
 
+## 主流程（可执行展开版）
+### A1. 防御监控 E2E（Runbook）
+- 阶段 0（事件接入）
+  - 触发：蜜罐告警推送或黑名单轮询命中。
+  - 输入：`ip/source/attack_type/timestamp/raw_payload`。
+  - 处理：字段校验、去重（同 `ip + source + time_bucket`）、生成 `trace_id`。
+  - 入库：写入 `threat_event`，初始状态 `PENDING`。
+  - 失败：解析失败进入 `FAILED_NORMALIZE`（可落在错误事件表或审计日志）。
+  - 说明：`HFish` 在本项目中仅作为“蜜罐事件来源”之一，由 `collector` 统一接入与标准化。
+- 阶段 1（AI 评估）
+  - 触发：`threat_event.status=PENDING`。
+  - 处理：调用 `ai_engine` 输出 `ai_score/ai_reason/action_suggest/confidence`。
+  - 规则：`ai_score >= 80` 建议 `BLOCK`，否则建议 `MONITOR`。
+  - 入库：写入 `ai_decision_log`，回写 `threat_event.ai_score/ai_reason`。
+  - 失败：AI 不可用时进入降级策略（规则引擎兜底 + 人工必审）。
+- 阶段 2（人工审批）
+  - 触发：控制台待办区出现事件。
+  - API：`GET /api/v1/defense/pending` 查询、`POST /api/v1/defense/{id}/approve|reject` 审批。
+  - 权限：仅 `operator/admin` 可审批。
+  - 结果：
+    - `approve` -> 创建 `execution_task(state=QUEUED)`。
+    - `reject` -> `threat_event.status=REJECTED` 并写审计。
+- 阶段 3（设备执行）
+  - 触发：执行器轮询 `execution_task.state=QUEUED`。
+  - 处理：按设备顺序调用 `mcp_client.block_ip`，每台设备独立记录结果。
+  - 幂等：同一 `event_id + device_id + action` 仅允许一个活动任务。
+  - 成功：任务置 `SUCCESS`，事件可推进 `DONE`。
+  - 失败：任务置 `FAILED` 并进入 `RETRYING`（指数退避）。
+- 阶段 4（外部防火墙联动，可选）
+  - 触发：封禁成功且策略允许外部同步。
+  - API：`POST /api/v1/firewall/sync`（或内部服务调用）。
+  - 幂等：要求 `Idempotency-Key`，并落 `firewall_sync_task.request_hash`。
+  - 回执：记录 `vendor/status_code/response_digest/trace_id`。
+  - 失败：达到阈值后转 `MANUAL_REQUIRED`，不阻塞主链路闭环。
+- 阶段 5（结果展示与复盘）
+  - 控制台：展示事件状态时间线、AI 解释、设备执行明细、防火墙回执。
+  - 报告：写入 `ai_report`，支持导出与归档。
+  - 审计：关键动作写 `audit_log`（操作者、动作、目标、结果、trace_id）。
+
+### A2. 防御链路异常分支
+- MCP 不可达：标记设备执行失败，触发重试；超过阈值后转人工。
+- 设备权限错误：立即停止该设备后续命令，记录不可恢复错误并告警。
+- 重复审批：返回 `409xx`，直接回放首次审批结果（幂等返回）。
+- 高危批量动作：必须二次确认，且强制写审计与通知。
+
+### B1. 探测扫描 E2E（Runbook）
+- 阶段 0（资产准备）
+  - API：`POST /api/v1/scan/assets` 新增资产，`GET /api/v1/scan/assets` 查询。
+  - 校验：目标格式、CIDR 合法性、扫描窗口与标签策略。
+  - 入库：`asset` 写入，状态 `enabled=true`。
+- 阶段 1（任务创建）
+  - API：`POST /api/v1/scan/tasks`，参数包含 `target/tool_name/profile/script_set`。
+  - 入库：创建 `scan_task(state=CREATED)`，生成 `trace_id`。
+  - 安全：仅允许白名单扫描参数组合，禁止原始命令直传。
+- 阶段 2（任务调度与执行）
+  - 调度：`scan-orchestrator` 按优先级与并发阈值分发任务。
+  - 执行：调用 Kali/MCP/漏洞工具，写入原始输出索引（路径或对象存储引用）。
+  - 状态：`CREATED -> DISPATCHED -> RUNNING`。
+  - 超时：达到阈值后置 `FAILED_TIMEOUT` 并允许有限重试。
+- 阶段 3（结果解析与归一）
+  - 解析：抽取 `host/port/service/script/cve/severity/evidence`。
+  - 入库：写 `scan_finding`，任务状态推进 `PARSED`。
+  - 去重：同资产同端口同漏洞在时间窗口内合并，保留最强证据。
+- 阶段 4（AI 分析与建议）
+  - 调用：`ai_engine` 生成风险摘要、修复优先级、复测建议。
+  - 输出：写 `ai_report`，任务状态置 `REPORTED`。
+  - 对话：支持在 `AICenter` 以任务上下文追问。
+- 阶段 5（导出与闭环）
+  - 导出：Markdown/PDF，关联 `trace_id` 与证据引用。
+  - 闭环：对高危项创建修复待办并记录 SLA。
+
+### B2. 扫描链路异常分支
+- 目标不可达：记录 `UNREACHABLE`，不进入漏洞统计但保留审计。
+- 工具执行异常：记录 `502xx` 依赖错误，按工具类型重试。
+- 解析失败：保存原始输出，状态置 `FAILED_PARSE`，进入人工复核。
+- 任务拥塞：触发限流与排队，必要时拒绝低优先级任务。
+
+### C. 跨链路公共控制点
+- 鉴权：除登录与健康检查外默认鉴权；白名单接口单独审计。
+- 追踪：请求进入系统即生成或继承 `trace_id`，贯穿 API/任务/日志/报告。
+- 幂等：高风险写操作必须携带 `Idempotency-Key`，重复请求返回首个结果。
+- 审计：审批、封禁、回滚、凭据修改、插件启停、防火墙下发必须记录审计。
+- 可观测：核心节点打点（排队时长、执行时长、失败原因、重试次数）。
+
+### D. 前后端页面与后端流程映射（后台控制台完整规范）
+#### D1. 控制台整体布局（App Shell）
+- 页面结构：`左侧 Sidebar + 顶部 Topbar + 主内容区 RouterView + 右侧抽屉(告警/消息)`。
+- 交互规则：
+  - Sidebar 负责一级导航切换与权限可见性。
+  - Topbar 负责全局模式切换、全局搜索、系统状态提示。
+  - 右上角负责账户与系统操作（通知、个人中心、设置、退出）。
+- 响应式行为：
+  - 桌面端固定侧边栏。
+  - 移动端侧边栏折叠为抽屉，Topbar 提供菜单按钮展开。
+
+#### D2. 左侧 Sidebar（页面切换）
+- 菜单建议（按业务分组）
+  - `总览`：`#/overview`（系统态势、核心指标、待办统计）。
+  - `防御监控`：`#/defense`（告警、审批、执行状态）。
+  - `探测扫描`：`#/scan`（资产、任务、漏洞结果）。
+  - `AI 中枢`：`#/ai-center`（对话、报告、TTS）。
+  - `插件与联动`：`#/integrations`（插件、推送通道、防火墙同步）。
+  - `审计中心`：`#/audit`（操作日志、追踪检索、导出）。
+  - `系统设置`：`#/settings`（账户、角色、策略、密钥、系统参数）。
+- 切换行为
+  - 点击菜单即路由切换并高亮当前菜单。
+  - 切换前检测未保存表单，提示“保存后离开/放弃修改”。
+  - 每次切换记录 `audit_log(module='navigation', action='switch_page')`。
+- 权限可见性
+  - `viewer`：总览、防御查看、扫描查看、AI 查看、审计查看。
+  - `operator`：增加审批、执行、任务触发权限。
+  - `admin`：增加系统设置、插件管理、密钥管理权限。
+
+#### D3. 顶栏 Topbar（主动/被动模式切换）
+- 模式定义
+  - `主动模式 (ACTIVE)`：允许主动扫描、自动策略建议、计划任务执行。
+  - `被动模式 (PASSIVE)`：仅监控与人工触发，不自动发起主动扫描与自动处置。
+- 切换控件
+  - Topbar 显示双态开关：`主动模式 | 被动模式`。
+  - 当前模式必须全局可见（Topbar 标签 + 总览页状态卡）。
+- 切换流程
+  1. `operator/admin` 发起切换。
+  2. 弹出确认框，显示影响范围（扫描调度、自动策略、告警推送级别）。
+  3. 提交 `POST /api/v1/system/mode/switch`。
+  4. 后端原子更新 `system_mode` 并广播到执行器/调度器。
+  5. 前端刷新全局状态并提示切换结果。
+- 安全与审计
+  - 切换必须写审计：操作者、旧值、新值、原因、`trace_id`。
+  - 连续频繁切换触发风控（如 5 分钟内超过阈值告警）。
+
+#### D4. 右上角系统功能（完整后台）
+- 功能清单
+  - `通知中心`：未读告警、任务失败、外部联动异常。
+  - `全局搜索`：按 IP/任务 ID/trace_id 快速跳转详情。
+  - `个人中心`：头像、昵称、邮箱、最近登录信息。
+  - `安全设置`：修改密码、2FA、会话管理。
+  - `系统设置入口`：仅 `admin` 可见。
+  - `退出登录`：清理 Token、清理本地缓存、回到登录页。
+- 退出登录流程（必须）
+  1. 点击右上角头像菜单 -> `退出登录`。
+  2. 弹出二次确认（防误触）。
+  3. 调用 `POST /api/v1/auth/logout` 注销当前会话。
+  4. 前端清除 `access_token/refresh_token/user_profile`。
+  5. 跳转 `#/login`，并展示“已安全退出”。
+
+#### D5. 后端接口映射（系统功能）
+- `GET /api/v1/system/profile`：获取当前用户资料与权限。
+- `PUT /api/v1/system/profile`：更新个人资料。
+- `POST /api/v1/system/password/change`：修改密码。
+- `GET /api/v1/system/notifications`：通知列表（支持分页、未读筛选）。
+- `POST /api/v1/system/notifications/read`：批量已读。
+- `GET /api/v1/system/search`：全局搜索（按关键字类型路由）。
+- `GET /api/v1/system/mode`：读取当前主动/被动模式。
+- `POST /api/v1/system/mode/switch`：切换模式（需权限与审计）。
+- `POST /api/v1/auth/logout`：退出当前会话。
+
+#### D6. 数据与状态建议（系统层）
+- 建议新增表
+  - `system_setting`: `key`, `value`, `updated_by`, `updated_at`。
+  - `operator_mode_log`: `id`, `old_mode`, `new_mode`, `operator`, `reason`, `trace_id`, `created_at`。
+  - `user_session`: `id`, `user_id`, `token_id`, `ip`, `ua`, `expired_at`, `revoked_at`。
+  - `user_notification`: `id`, `user_id`, `type`, `title`, `content`, `read_at`, `created_at`。
+- 前端全局状态
+  - `app.mode`, `app.user`, `app.permissions`, `app.unreadCount`, `app.systemHealth`。
+
+#### D7. 页面级最小交互要求
+- 所有可点击元素显示 `cursor-pointer`，并有 `transition-colors duration-200`。
+- 高风险操作（模式切换、批量处置、退出）均需确认弹窗。
+- 失败提示需可追踪（展示 `trace_id`）。
+- 表格列表支持：分页、筛选、排序、列显隐、导出。
+
+#### D8. 验收标准（后台壳）
+- Sidebar 所有菜单可按权限正确显示并可切换。
+- Topbar 模式切换后 3 秒内全局状态一致（前端、后端、调度器）。
+- 右上角退出流程无残留会话（刷新后仍在登录页）。
+- 任一系统动作均可在审计中心按 `trace_id` 回放。
+
+#### D9. 页面级详细规划（可直接开发）
+##### D9.1 `#/overview`（总览）
+- 页面目标
+  - 展示系统全局健康度、链路状态、待处理事项与高风险事件趋势。
+- 组件结构
+  - 顶部状态条：当前模式（ACTIVE/PASSIVE）、系统健康灯、最近同步时间。
+  - KPI 卡片：今日告警数、待审批数、封禁成功率、扫描成功率。
+  - 趋势图：24h 告警趋势、7d 漏洞趋势、失败原因分布。
+  - 待办面板：待审批事件 TopN、失败任务 TopN。
+- 数据接口
+  - `GET /api/v1/overview/metrics`
+  - `GET /api/v1/overview/trends`
+  - `GET /api/v1/overview/todos`
+- 交互规则
+  - 卡片支持点击跳转到对应页面并携带筛选条件。
+  - 趋势图支持时间范围切换（24h/7d/30d）。
+
+##### D9.2 `#/defense`（防御监控）
+- 页面目标
+  - 完成“查看 -> 审批 -> 执行 -> 回滚/复核”闭环。
+- 组件结构
+  - 筛选栏：时间、来源、风险等级、状态。
+  - 事件表：IP、来源、AI评分、建议动作、状态、trace_id。
+  - 详情抽屉：证据、时间线、执行日志、关联会话。
+  - 操作区：Approve/Reject/Manual Rollback。
+- 数据接口
+  - `GET /api/v1/defense/events`
+  - `GET /api/v1/defense/events/{id}`
+  - `POST /api/v1/defense/{id}/approve`
+  - `POST /api/v1/defense/{id}/reject`
+  - `POST /api/v1/defense/{id}/rollback`
+- 交互规则
+  - 审批必须填写理由（可选模板）。
+  - 执行失败时展示失败设备清单与重试入口。
+
+##### D9.3 `#/scan`（探测扫描）
+- 页面目标
+  - 完成“资产 -> 任务 -> 结果 -> 修复建议”闭环。
+- 组件结构
+  - 资产列表区：资产增删改查、标签、优先级。
+  - 任务队列区：任务状态、进度、耗时、失败原因。
+  - 结果区：端口矩阵、漏洞列表、证据明细。
+- 数据接口
+  - `GET/POST /api/v1/scan/assets`
+  - `GET/POST /api/v1/scan/tasks`
+  - `GET /api/v1/scan/tasks/{id}`
+  - `GET /api/v1/scan/tasks/{id}/findings`
+- 交互规则
+  - 创建任务时只允许参数模板选择，不允许自由输入危险参数。
+  - 结果页支持按严重级别、CVE、端口筛选。
+
+##### D9.4 `#/ai-center`（AI 中枢）
+- 页面目标
+  - 提供上下文问答、报告生成、TTS 播报。
+- 组件结构
+  - 会话面板：消息流、证据引用、上下文标签。
+  - 报告面板：模板选择、时间范围、导出格式。
+  - TTS 面板：语音模型、任务状态、音频回放。
+- 数据接口
+  - `POST /api/v1/ai/chat/session`
+  - `POST /api/v1/ai/chat/message`
+  - `POST /api/v1/report/generate`
+  - `POST /api/v1/tts/task`
+- 交互规则
+  - 回答必须可展开查看证据来源。
+  - 报告导出完成后产生通知并可追溯生成参数。
+
+##### D9.5 `#/integrations`（插件与联动）
+- 页面目标
+  - 管理插件、推送通道、防火墙同步策略。
+- 组件结构
+  - 插件表：名称、类型、状态、最近心跳、权限范围。
+  - 推送通道：通道类型、目标地址、状态、测试按钮。
+  - 防火墙策略：厂商、策略ID、同步状态、失败重试阈值。
+- 数据接口
+  - `GET/POST /api/v1/plugins`
+  - `GET/POST /api/v1/push/channels`
+  - `GET/POST /api/v1/firewall/policies`
+- 交互规则
+  - 启停插件需二次确认并强制审计。
+  - 通道配置支持“发送测试消息”。
+
+##### D9.6 `#/audit`（审计中心）
+- 页面目标
+  - 提供可检索、可导出、可复盘的审计能力。
+- 组件结构
+  - 检索栏：按 `trace_id/operator/module/action/time` 查询。
+  - 审计表：动作摘要、结果、来源 IP、创建时间。
+  - 详情抽屉：请求摘要、响应摘要、前后状态 diff。
+- 数据接口
+  - `GET /api/v1/audit/logs`
+  - `GET /api/v1/audit/logs/{id}`
+  - `GET /api/v1/audit/export`
+- 交互规则
+  - 审计导出仅 `admin` 可用。
+  - 高频查询自动缓存，避免影响线上性能。
+
+##### D9.7 `#/settings`（系统设置）
+- 页面目标
+  - 管理用户、角色、策略、系统参数与密钥版本。
+- 组件结构
+  - 用户与角色：账号、角色分配、会话回收。
+  - 策略设置：主动/被动默认策略、阈值参数。
+  - 系统参数：任务并发、重试上限、超时阈值。
+  - 安全配置：密钥版本、轮换计划、2FA 开关。
+- 数据接口
+  - `GET/PUT /api/v1/system/settings`
+  - `GET/PUT /api/v1/system/roles`
+  - `GET/PUT /api/v1/system/security`
+- 交互规则
+  - 参数修改需校验范围并展示“影响说明”。
+  - 高风险配置变更需二次确认 + 审批流（可选）。
+
+#### D10. 顶栏与右上角详细交互时序
+- `模式切换时序`
+  1. 用户点击 Topbar 模式开关。
+  2. 弹窗展示影响范围与风险提示。
+  3. 用户输入切换原因（必填）并确认。
+  4. 调用 `POST /api/v1/system/mode/switch`。
+  5. 后端写 `operator_mode_log` + `audit_log`。
+  6. 前端刷新全局状态与所有页面只读/可执行态。
+- `退出登录时序`
+  1. 用户点击右上角头像菜单 `退出登录`。
+  2. 弹窗确认。
+  3. 调用 `POST /api/v1/auth/logout`。
+  4. 失效当前会话 Token，写审计。
+  5. 前端清理状态并跳转登录页。
+
+#### D11. 后台功能实现顺序（前后端协同）
+- 前置阶段
+  - 完成 `auth + RBAC + trace_id`。
+  - 完成全局状态管理（用户、权限、模式、通知）。
+- UI 壳阶段
+  - 先实现 App Shell 与路由骨架。
+  - 再实现 Sidebar 权限菜单与 Topbar 模式开关。
+  - 再实现右上角菜单与退出登录。
+- 页面阶段
+  - 优先：`overview -> defense -> scan`。
+  - 次级：`ai-center -> integrations -> audit -> settings`。
+- 联调阶段
+  - 每页面按“列表 -> 详情 -> 动作 -> 失败分支”顺序联调。
+- 验收阶段
+  - 跑通关键 E2E：菜单切换、模式切换、退出登录、审计回放。
+
+#### D12. 页面开发任务分解（前端）
+- 公共组件
+  - `AppSidebar`、`AppTopbar`、`UserMenu`、`ModeSwitch`、`NotifyDrawer`、`GlobalSearch`。
+- 页面容器
+  - `OverviewPage`、`DefensePage`、`ScanPage`、`AiCenterPage`、`IntegrationsPage`、`AuditPage`、`SettingsPage`。
+- 组合组件
+  - `MetricCard`、`EventTable`、`TaskQueueTable`、`AuditTable`、`ConfirmDialog`、`TraceBadge`。
+- 状态模块
+  - `useAuthStore`、`useAppStore`、`useDefenseStore`、`useScanStore`、`useAuditStore`。
+
+#### D13. 页面开发任务分解（后端）
+- 系统与账户
+  - `api/system.py`: profile/settings/mode/notifications/search。
+  - `api/auth.py`: logout/session revoke。
+- 审计与模式
+  - `services/audit_service.py`：统一写审计与查询。
+  - `services/mode_service.py`：模式读写、广播、风控阈值。
+- 查询聚合
+  - `api/overview.py`：metrics/trends/todos 聚合接口。
+- 安全边界
+  - 中间件：权限校验、参数校验、限流、审计注入。
+
+#### D14. 后台功能验收用例（建议直接用于测试）
+- 用例 1：`viewer` 登录后仅可见允许菜单，无法访问设置页。
+- 用例 2：`operator` 切换 `ACTIVE -> PASSIVE` 成功，且审计可检索。
+- 用例 3：`admin` 在设置页修改阈值，保存后生效并可回滚。
+- 用例 4：退出登录后 Token 失效，刷新页面保持未登录态。
+- 用例 5：通过 `trace_id` 可从总览跳转到审计详情并回放全链路。
+
+### E. 端到端验收口径（流程视角）
+- 防御闭环：从告警接入到设备封禁成功，全链路 `trace_id` 可回放。
+- 扫描闭环：从任务创建到报告导出，关键状态全部可见且可审计。
+- 异常闭环：重试、人工接管、失败原因分类可查且可统计。
+- 合规闭环：高风险动作均有审批、权限校验与不可篡改审计记录。
+
 ## 模块拆分（子内容）
 ### 1) 防御监控模块
 - `collector`
   - 对接黑名单 API、蜜罐数据
   - 字段校验、去重、重复来源合并
+  - 说明：`HFish API` 按统一采集协议接入 `collector`，不单独扩展专用页面。
+  - 统一字段输出：`source_vendor`, `source_type`, `source_event_id`, `attack_ip`, `attack_time`, `threat_label`, `raw_payload`, `extra_json`。
 - `normalizer`
   - 统一数据结构与风险等级
   - 写入 `SQLite` 临时缓存并维护状态字段
@@ -463,6 +881,138 @@ AimiGuard（AI安全运营平台）
 - 模型策略：本地模型优先，外部模型按策略切换并保留审计
 - 持续优化：执行耗时、告警噪音、审计完整性与可追溯性
 
+## 成品化补充清单（按优先级）
+### P0（必须先补齐）
+- [ ] 可运行工程骨架：`backend/`、`frontend/`、`requirements.txt`、初始化脚本、样例配置可直接启动。
+- [ ] 数据库可执行规范：建表 SQL、索引、唯一约束、状态枚举、初始化数据、迁移策略（建议 Alembic）。
+- [ ] API 契约冻结：OpenAPI 文档、错误码映射、幂等规则、分页与排序标准统一。
+- [ ] 关键任务状态机：`threat_event`、`execution_task`、`scan_task`、`firewall_sync_task` 的状态流转、超时与人工接管规则明确。
+- [ ] 安全最小闭环：凭据加密、密钥管理、RBAC 接口权限矩阵、审计日志追加写规则可执行。
+
+### P1（上线前补齐）
+- [ ] 可观测性：结构化日志、`trace_id` 全链路透传、指标与告警阈值落地。
+- [ ] 测试与质量门禁：单测/集成/E2E 覆盖目标、CI 流水线（lint + test + build）与阻断规则。
+- [ ] 部署分层：`dev/test/prod` 环境配置分离、反向代理与密钥注入方案、备份恢复流程。
+
+### P2（稳定运营优化）
+- [ ] 验收 KPI 量化：误报率、处置 SLA、封禁成功率、报告生成时延按周期复盘。
+- [ ] 外部联动治理：MCP 插件准入清单、风险分级、熔断与降级策略、第三方故障隔离。
+
+### P0 成品化补丁（可直接执行）
+- [ ] R0 发布治理：冻结 `main/release/hotfix` 流程、`SemVer`、`CHANGELOG` 与回滚审批链（负责人：Tech Lead；验收：可在 10 分钟内回滚；证据：发布 SOP + 回滚演练记录）。
+- [ ] R1 环境矩阵：补齐 `dev/staging/prod` 配置清单（必填项、默认值、密钥来源、轮换周期）（负责人：后端 + 运维；验收：新环境可 30 分钟内落地；证据：`env-matrix` 文档 + 启动截图）。
+- [ ] R2 权限矩阵：建立“角色-页面-接口-动作”授权表，覆盖审批、封禁、模式切换、系统设置（负责人：后端 + 前端；验收：越权请求全部拒绝并留痕；证据：RBAC 用例与审计日志）。
+- [ ] R3 灾备与生命周期：定义备份频率、恢复演练、`RPO/RTO`，以及 `threat_event/scan_finding/audit_log` 保留与归档策略（负责人：运维；验收：恢复演练通过；证据：演练报告 + 归档任务记录）。
+- [ ] R4 供应链安全：落地依赖漏洞扫描、镜像扫描、`SBOM`、`SAST/DAST` 门禁（负责人：后端 + 运维；验收：高危漏洞阻断发布；证据：CI 安全流水线报告）。
+- [ ] R5 值班与事故机制：建立 `P1/P2/P3` 事故分级、升级路径、响应时限与复盘模板（负责人：项目负责人；验收：值班表可执行且演练通过；证据：值班排班 + 演练记录）。
+- [ ] R6 非功能门槛：明确可用性、P95/P99 延迟、并发、审计完整率红线（负责人：架构 + 测试；验收：压测与观测指标达标；证据：压测报告 + 仪表盘截图）。
+- [ ] R7 合规与数据保护：定义 IP/身份信息脱敏、导出审批、访问留痕、最小可见范围（负责人：后端 + 安全；验收：敏感字段默认脱敏；证据：字段策略表 + 审计抽检结果）。
+
+## 工程化落地模板（建议直接纳入迭代）
+### 1) 可运行骨架与启动约定
+- 后端启动：提供 `backend/main.py` + `backend/.env.example` + `backend/scripts/init_db.py`。
+- 前端启动：提供 `frontend/package.json` + `frontend/.env.example`，默认代理 `/api`。
+- 一键启动建议：提供根目录脚本（如 `scripts/dev.ps1`）完成依赖安装、数据库初始化、前后端启动。
+
+### 2) 数据库建表与迁移规范（MVP）
+- 必备约束：
+  - 所有核心表包含 `id`、`created_at`、`updated_at`。
+  - 关键链路表包含 `trace_id`。
+  - 幂等相关表包含唯一键（如 `request_hash`）。
+- 迁移策略：
+  - 使用版本化迁移（推荐 Alembic），禁止手工改线上表结构。
+  - 每次迁移附带回滚脚本与验证 SQL。
+
+```sql
+-- sql/mvp_schema.sql (skeleton)
+CREATE TABLE IF NOT EXISTS threat_event (
+  id INTEGER PRIMARY KEY,
+  ip TEXT NOT NULL,
+  source TEXT NOT NULL,
+  ai_score INTEGER,
+  ai_reason TEXT,
+  status TEXT NOT NULL CHECK(status IN ('PENDING','APPROVED','REJECTED','EXECUTING','DONE','FAILED')),
+  trace_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_threat_event_status ON threat_event(status);
+CREATE INDEX IF NOT EXISTS idx_threat_event_trace_id ON threat_event(trace_id);
+
+CREATE TABLE IF NOT EXISTS firewall_sync_task (
+  id INTEGER PRIMARY KEY,
+  ip TEXT NOT NULL,
+  firewall_vendor TEXT NOT NULL,
+  policy_id TEXT,
+  request_hash TEXT NOT NULL UNIQUE,
+  state TEXT NOT NULL CHECK(state IN ('PENDING','RUNNING','SUCCESS','FAILED','RETRYING','MANUAL_REQUIRED')),
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  trace_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+```
+
+### 3) API 契约与幂等规范
+- API 文档：提供 `/api/v1/openapi.json` 与导出的静态文档页面。
+- 统一约定：
+  - 请求头支持 `X-Trace-Id`（可选，服务端兜底生成）。
+  - 高风险写接口支持 `Idempotency-Key`（必填）。
+  - 响应统一返回 `code/message/data/trace_id`。
+- 幂等规则：同一 `Idempotency-Key + operator + action + target` 视为同一请求，返回首次执行结果。
+
+### 4) 关键状态机（建议）
+- `threat_event`：`PENDING -> APPROVED/REJECTED -> EXECUTING -> DONE/FAILED`。
+- `execution_task`：`QUEUED -> RUNNING -> SUCCESS/FAILED -> RETRYING -> MANUAL_REQUIRED`。
+- `scan_task`：`CREATED -> DISPATCHED -> RUNNING -> PARSED -> REPORTED/FAILED`。
+- `firewall_sync_task`：`PENDING -> RUNNING -> SUCCESS/FAILED -> RETRYING -> MANUAL_REQUIRED`。
+
+### 5) 安全执行细则
+- 凭据安全：`credential.secret_ciphertext` 使用 AES-GCM；主密钥来自环境变量或 KMS；支持 `key_version` 轮换。
+- RBAC 矩阵（最小集）：
+  - `viewer`：只读仪表盘、报告。
+  - `operator`：可审批、可执行封禁、可触发扫描。
+  - `admin`：可管理凭据、插件、模型路由与系统策略。
+- 审计规则：所有高风险动作（封禁、回滚、凭据修改、插件启停）必须写 `audit_log`，并带 `trace_id`。
+
+### 6) 可观测性与 SLO
+- 日志标准字段：`timestamp`, `level`, `trace_id`, `operator`, `module`, `action`, `target`, `result`, `latency_ms`, `error_code`。
+- 最小指标集：
+  - 防御链路：审批耗时、封禁成功率、重试率。
+  - 扫描链路：任务吞吐、平均耗时、超时率。
+  - 外部依赖：MCP 成功率、防火墙 API 成功率、AI 服务可用性。
+- 建议 SLO（MVP）：
+  - 封禁执行成功率 >= 99%。
+  - 防火墙同步成功率 >= 98%。
+  - P95 API 延迟 <= 500ms（不含长任务接口）。
+
+### 7) 测试与 CI 门禁
+- 测试分层：
+  - 单元测试：策略引擎、状态机流转、解析器。
+  - 集成测试：API + SQLite + Mock MCP/防火墙。
+  - E2E：防御闭环与扫描闭环各至少 1 条主路径。
+- CI 阻断条件：
+  - lint 或测试失败禁止合并。
+  - 覆盖率低于阈值（建议 70%）禁止合并。
+  - OpenAPI 与实现不一致禁止合并。
+
+### 8) 部署与环境分层
+- 环境配置：`dev/test/prod` 分离，严禁生产密钥复用到开发环境。
+- 反向代理：统一 `/api/*` 转发后端，前端静态资源独立托管。
+- 运维保障：每日自动备份 SQLite + 每周归档 + 恢复演练（至少月度一次）。
+
+### 9) 验收 KPI（建议）
+- 误报率（按周）<= 20%。
+- 人工审批平均时延 <= 5 分钟。
+- 高危事件 24 小时内闭环率 >= 95%。
+- 报告生成成功率 >= 99%，生成时延 P95 <= 60 秒。
+
+### 10) 外部联动治理（MCP/防火墙/插件）
+- 准入机制：插件注册需签名校验、权限声明、健康检查通过。
+- 风险分级：高风险插件默认只读，需管理员二次授权后开放执行权限。
+- 失效保护：第三方异常触发熔断，不阻塞主流程；任务自动转 `MANUAL_REQUIRED`。
+- 回放能力：保留请求摘要与回执，支持按 `trace_id` 全链路复盘。
+
 ## 备注
 - `SQLite` 作为临时中间缓存，建议字段覆盖事件、任务、扫描结果、AI 结论、对话与报告索引。
 - 封禁与扫描动作必须保留审计日志：操作者、目标、命令/工具、结果、时间、追踪ID。
@@ -555,4 +1105,415 @@ requirements.txt
 - 策略引擎可视化配置。
 - 报告模板中心化与分角色输出。
 - 审计看板与合规报表自动化。
+
+## 详细规划文档（执行版）
+### 规划目标
+- 将当前 README 从“方案说明”推进为“可按周执行、可按里程碑验收、可按指标复盘”的项目主计划。
+- 覆盖范围：需求冻结、架构落地、研发实施、联调验证、灰度上线、稳定运营。
+- 输出要求：每阶段都包含输入、动作、交付物、验收口径、风险与回退策略。
+
+### 阶段划分与周期建议（12 周）
+- `Phase 0（第 1 周）`：范围冻结与工程基线。
+- `Phase 1（第 2-4 周）`：MVP 双链路打通（防御 + 扫描）。
+- `Phase 2（第 5-8 周）`：增强能力（AI、插件、防火墙联动、安全加固）。
+- `Phase 3（第 9-10 周）`：预发布（压测、故障演练、回归、文档补齐）。
+- `Phase 4（第 11-12 周）`：上线与运营优化（SLO 观测、误报治理、成本优化）。
+
+### Phase 0：范围冻结与工程基线（第 1 周）
+- 输入
+  - 当前 README、接口规范、数据模型草案、外部依赖清单。
+- 关键动作
+  - 冻结 MVP 范围（必须项 / 延后项）。
+  - 建立仓库结构：`backend/`、`frontend/`、`scripts/`、`sql/`、`tests/`。
+  - 提供 `.env.example`、本地启动脚本、数据库初始化脚本。
+  - 约定代码规范、分支策略、提交规范、CI 基线。
+- 交付物
+  - 可运行空骨架、首版建表 SQL、OpenAPI 空壳、CI 初版。
+- 验收
+  - 本地可一键启动；`/health` 可用；核心表可创建；前端可访问并连通 `/api`。
+
+### Phase 1：MVP 双链路打通（第 2-4 周）
+- 第 2 周（防御链路主路径）
+  - 完成 `collector/normalizer/policy-engine`。
+  - 完成待办审批接口与前端待办列表。
+  - 完成单设备封禁闭环（含审计）。
+- 第 3 周（扫描链路主路径）
+  - 完成资产管理、任务创建、调度执行、结果解析。
+  - 完成扫描结果列表与基础报告生成。
+- 第 4 周（双链路集成）
+  - 完成统一状态机、统一错误码、统一 `trace_id`。
+  - 完成最小权限 RBAC（viewer/operator/admin）。
+  - 完成 E2E 主路径测试（防御 1 条 + 扫描 1 条）。
+- 阶段交付物
+  - 可演示系统：告警到封禁、资产到报告两条路径均可跑通。
+- 阶段验收
+  - 防御链路成功率 >= 95%，扫描任务成功率 >= 90%。
+
+### Phase 2：增强能力与安全加固（第 5-8 周）
+- 第 5 周（AI 中枢增强）
+  - 多轮对话上下文、解释增强、报告模板增强。
+  - TTS 任务提交、状态查询、音频索引落库。
+- 第 6 周（插件与推送）
+  - `plugin_registry` 与 `push_channel` 接入。
+  - 异常推送支持至少 1 种通道（Webhook 或 IM 机器人）。
+- 第 7 周（外部防火墙联动）
+  - `firewall_sync_task` 流程落地，签名、幂等、重试、回执追踪。
+  - 联动失败转人工接管，不阻断主业务链路。
+- 第 8 周（安全与合规）
+  - 凭据加密（AES-GCM）、密钥轮换、操作二次确认。
+  - 审计日志增强：高风险操作全量覆盖。
+- 阶段交付物
+  - AI 中枢、插件联动、防火墙联动、安全基线均可演示。
+- 阶段验收
+  - 高风险动作审计覆盖率 100%，防火墙同步成功率 >= 98%。
+
+### Phase 3：预发布与稳定性验证（第 9-10 周）
+- 关键动作
+  - 回归测试、接口兼容检查、数据迁移演练。
+  - 压测（API、任务队列、扫描并发）、故障演练（MCP/AI/防火墙不可用）。
+  - 完成 Runbook、值班手册、应急预案、回滚预案。
+- 交付物
+  - 发布候选版本（RC）、压测报告、故障演练报告、上线检查单。
+- 验收
+  - 达到 SLO 门槛；演练项通过；上线阻断项为 0。
+
+### Phase 4：上线与运营优化（第 11-12 周）
+- 关键动作
+  - 小流量灰度发布，监控指标逐步放量。
+  - 周度复盘误报率、处置时延、任务失败 Top 原因。
+  - 优化模型路由、重试策略、扫描参数模板。
+- 交付物
+  - 正式上线版本、首月运营报告、优化 backlog。
+- 验收
+  - 关键指标稳定在目标区间，未出现 P0/P1 级重大故障。
+
+## 模块级实施清单（WBS）
+### 后端
+- `api/auth.py`：登录、刷新、鉴权中间件、RBAC 校验装饰器。
+- `api/defense.py`：告警接入、待办查询、审批执行、执行明细查询。
+- `api/scan.py`：资产 CRUD、任务创建、任务查询、结果查询。
+- `api/report.py`：报告生成、导出、归档索引查询。
+- `api/ai_chat.py`：会话管理、消息上下文拼装、证据引用。
+- `api/tts.py`：任务提交、进度查询、音频路径索引。
+- `api/firewall.py`：同步下发、回执处理、失败重试、人工接管。
+- `services/*`：AI 引擎、MCP 客户端、扫描调度、策略引擎、审计服务。
+
+### 前端
+- 路由：`#/defense`、`#/scan`、`#/ai-center`。
+- 页面：待办审批、扫描任务、报告中心、AI 对话、系统设置。
+- 交互：高风险动作确认、执行进度可视化、失败原因可追踪。
+- 状态管理：按模块拆分（defense/scan/ai/system），统一错误处理。
+
+### 数据与运维
+- 数据库：建表、索引、迁移脚本、归档策略、备份恢复脚本。
+- 观测：日志规范、指标采集、告警规则、看板模板。
+- 安全：密钥管理、凭据加密、访问控制、审计保留策略。
+
+## 依赖关系与并行策略
+- 串行依赖
+  - 数据模型冻结 -> API 契约冻结 -> 前后端联调。
+  - RBAC 模型冻结 -> 高风险操作上线。
+  - 幂等策略冻结 -> 防火墙联动上线。
+- 可并行项
+  - 扫描链路开发 与 防御链路开发可并行。
+  - AI 报告模板 与 前端可视化可并行。
+  - 日志指标接入 与 业务接口开发可并行。
+
+## 里程碑与闸门（Go/No-Go）
+- `M1（第 4 周）`：MVP 双链路打通
+  - 闸门：E2E 用例通过、核心接口稳定、无阻断级安全问题。
+- `M2（第 8 周）`：增强能力完成
+  - 闸门：插件/推送/防火墙联动可用，审计覆盖达标。
+- `M3（第 10 周）`：预发布通过
+  - 闸门：压测与故障演练通过，回滚预案可执行。
+- `M4（第 12 周）`：正式上线
+  - 闸门：灰度指标稳定、P0/P1 缺陷清零、值班机制就绪。
+
+## 发布准备清单（Release Checklist）
+- [ ] OpenAPI 与实现一致，变更日志齐全。
+- [ ] 数据迁移脚本在测试环境演练通过。
+- [ ] CI 全绿（lint/test/build/e2e）。
+- [ ] SLO 仪表盘与告警规则已启用。
+- [ ] 回滚脚本、应急联系人、值班手册已就绪。
+- [ ] 关键高风险动作已验证二次确认与审计留痕。
+
+## 研发协作与节奏建议
+- 每日：站会跟踪阻塞项（外部依赖、接口变更、环境问题）。
+- 每周：周计划与周复盘（目标达成、风险变化、下周动作）。
+- 每阶段结束：里程碑评审（Demo + 指标 + 风险 + Go/No-Go 决策）。
+- 变更控制：涉及鉴权、审计、幂等、状态机的改动必须走评审。
+
+## 风险登记（建议维护为活文档）
+- `R1` 外部依赖不稳定（MCP/防火墙/AI 服务）
+  - 应对：熔断、重试、降级、人工接管。
+- `R2` 误报率偏高导致人工负担上升
+  - 应对：规则与模型联合调优、白名单治理、聚类去噪。
+- `R3` 扫描任务拥塞影响主流程
+  - 应对：并发上限、优先级队列、扫描窗口控制。
+- `R4` 审计数据不完整影响合规
+  - 应对：强制审计中间件、发布前审计覆盖检查。
+- `R5` 凭据与密钥管理不当
+  - 应对：密钥轮换、最小权限、敏感操作双人复核。
+
+## 分步 TODO 清单（可直接执行）
+> 使用方式：按顺序逐项勾选，不建议跳步。每完成一项需附最小验证结果（命令输出或页面截图说明）。
+
+### Step 0：项目初始化（先做）
+- [ ] 0.1 创建目录：`backend/`、`frontend/`、`scripts/`、`sql/`、`tests/`。
+- [ ] 0.2 创建环境模板：`backend/.env.example`、`frontend/.env.example`。
+- [ ] 0.3 创建后端入口：`backend/main.py`，包含 `/health`。
+- [ ] 0.4 创建前端壳：`frontend` 初始化并配置 Hash 路由。
+- [ ] 0.5 创建一键启动脚本：`scripts/dev.ps1`（初始化 DB + 启动前后端）。
+- [ ] 0.6 验证：本地可访问前端页面且 `/api/health` 返回成功。
+
+### Step 1：数据库与迁移（基础底座）
+- [ ] 1.1 落地首版建表 SQL：`sql/mvp_schema.sql`。
+- [ ] 1.2 创建关键索引（状态、时间、trace_id、request_hash）。
+- [ ] 1.3 定义状态枚举与约束（CHECK/唯一键）。
+- [ ] 1.4 引入迁移工具（建议 Alembic）并创建初始迁移。
+- [ ] 1.5 编写初始化脚本：创建表 + 样例数据。
+- [ ] 1.6 验证：空库可初始化，重复执行不报错（幂等初始化）。
+
+### Step 2：鉴权与通用中间件（先于业务接口）
+- [ ] 2.1 设计并确认认证模型：用户、角色、权限点（viewer/operator/admin）。
+- [ ] 2.2 实现登录接口（账号密码校验、签发 access token）。
+- [ ] 2.3 实现刷新接口（refresh token 换新 access token）。
+- [ ] 2.4 实现 JWT 验签中间件（过期、签名、格式错误统一处理）。
+- [ ] 2.5 实现 RBAC 权限装饰器（接口级权限点绑定）。
+- [ ] 2.6 完成前端路由守卫（未登录跳登录、无权限跳 403 页面）。
+- [ ] 2.7 实现 `trace_id` 中间件（优先读取请求头，缺失自动生成）。
+- [ ] 2.8 实现统一响应封装：`code/message/data/trace_id`。
+- [ ] 2.9 实现统一异常处理器（400xx/401xx/403xx/409xx/500xx/502xx）。
+- [ ] 2.10 新建 `api/system.py` 路由骨架（profile/settings/mode/notifications/search）。
+- [ ] 2.11 实现 `GET /api/v1/system/profile`（返回用户资料+权限）。
+- [ ] 2.12 实现 `GET/POST /api/v1/system/mode`（读取与切换主动/被动模式）。
+- [ ] 2.13 实现 `services/mode_service.py`（模式切换原子更新+审计记录）。
+- [ ] 2.14 实现 `services/audit_service.py`（统一写审计入口）。
+- [ ] 2.15 搭建后台 App Shell：`Sidebar + Topbar + RouterView + 右侧通知抽屉`。
+- [ ] 2.16 完成 Sidebar 菜单与路由元信息：`overview/defense/scan/ai-center/integrations/audit/settings`。
+- [ ] 2.17 完成 Topbar 主动/被动模式开关（影响说明+确认弹窗+原因输入）。
+- [ ] 2.18 完成右上角系统菜单（通知、个人中心、安全设置、系统设置、退出登录）。
+- [ ] 2.19 实现 `POST /api/v1/auth/logout`（会话失效/可选 token 黑名单）。
+- [ ] 2.20 实现前端退出清理（token/user/缓存）并跳转 `#/login`。
+- [ ] 2.21 验证：未授权拒绝、授权放行、`trace_id` 可追踪、模式切换可审计、退出后刷新仍需登录。
+
+### Step 3：防御链路（MVP 主路径）
+- [ ] 3.1 定义 HFish 入站 DTO（`list_infos/attack_infos/attack_trend` 三结构）。
+- [ ] 3.2 实现源端响应校验（`response_code==0` 才进入解析，失败映射 `502xx`）。
+- [ ] 3.3 实现 `list_infos[]` 解析与字段映射（攻击来源聚合数据）。
+- [ ] 3.4 实现 `attack_infos[]` 解析与字段映射（攻击详情数据）。
+- [ ] 3.5 实现 `attack_trend[]` 解析（仅用于统计，不入 `threat_event` 明细）。
+- [ ] 3.6 统一时间处理：`attack_time/last_attack_time` 转 UTC 时间戳。
+- [ ] 3.7 实现标签标准化：`labels -> labels_cn -> unknown` 回退链。
+- [ ] 3.8 实现来源统一字段构建：`source_vendor/source_type/source_event_id`。
+- [ ] 3.9 实现字段容错：缺失字段落 `extra_json`，保留 `raw_payload`。
+- [ ] 3.10 实现去重键：`source_vendor + source_event_id`（无 id 时组合键兜底）。
+- [ ] 3.11 实现白名单/内网标记处理（`is_white/intranet` 参与策略判断）。
+- [ ] 3.12 落库 `threat_event`（基础字段 + 规范状态 + trace_id）。
+- [ ] 3.13 写接入审计日志（接入来源、条数、成功/失败、trace_id）。
+- [ ] 3.14 接入 AI 风险评分（失败时规则引擎兜底并标记降级来源）。
+- [ ] 3.15 回写 `ai_score/ai_reason/action_suggest` 到事件记录。
+- [ ] 3.16 实现待审批列表 API（状态、时间、风险等级筛选）。
+- [ ] 3.17 实现审批接口（Approve/Reject + 操作理由）。
+- [ ] 3.18 审批通过后创建 `execution_task(QUEUED)`（幂等防重）。
+- [ ] 3.19 实现执行器调用 `block_ip`、失败重试（指数退避）与 `MANUAL_REQUIRED`。
+- [ ] 3.20 验证：从 HFish 入站到封禁闭环跑通，且字段缺失时可回退到 `extra_json`。
+
+- [ ] 4.1 设计资产模型字段（IP/CIDR、标签、优先级、启停状态）。
+- [ ] 4.2 实现资产新增接口（格式校验、重复校验、默认标签）。
+- [ ] 4.3 实现资产列表/筛选/启停接口。
+- [ ] 4.4 定义扫描参数模板（白名单 profile，禁止自由拼接危险参数）。
+- [ ] 4.5 实现任务创建接口（关联资产、模板、优先级、超时）。
+- [ ] 4.6 实现任务队列与并发控制（全局并发上限+队列深度）。
+- [ ] 4.7 实现任务超时与重试策略（重试次数、退避间隔、终态规则）。
+- [ ] 4.8 调用扫描工具执行并保存原始输出索引（文件路径/对象存储 key）。
+- [ ] 4.9 解析扫描输出（host/port/service/script/cve/severity/evidence）。
+- [ ] 4.10 统一漏洞等级与字段规范（高/中/低映射、CVE 标准化）。
+- [ ] 4.11 落库 `scan_finding` 并做去重（资产+端口+漏洞）。
+- [ ] 4.12 实现状态机推进：`CREATED->DISPATCHED->RUNNING->PARSED->REPORTED/FAILED`。
+- [ ] 4.13 实现任务结果查询 API（列表/详情/失败原因/原始输出）。
+- [ ] 4.14 实现前端扫描列表页（状态、进度、耗时、失败提示）。
+- [ ] 4.15 实现前端结果详情页（筛选、漏洞明细、证据展示）。
+- [ ] 4.16 验证：从创建任务到报告可跑通，超时与失败分支可复现并可追踪。
+
+#### Step 3 字段级执行卡（HFish）
+- 3.A `list_infos` 入站 -> Canonical
+  - 输入字段：`client_id/client_ip/service_name/service_type/attack_ip/attack_count/last_attack_time/labels/labels_cn/is_white/intranet`。
+  - 输出字段：`source_vendor=hfish`, `source_type=attack_source`, `source_event_id`, `attack_ip`, `attack_time`, `attack_count`, `asset_ip`, `service_name`, `service_type`, `threat_label`, `is_white`, `raw_payload`, `extra_json`。
+  - 验收：同一 `source_event_id` 重复入站不产生重复活跃事件。
+- 3.B `attack_infos` 入站 -> Canonical
+  - 输入字段：`info_id/attack_ip/attack_port/attack_time/victim_ip/attack_rule/info.url/info.method/info.status_code/info.user_agent/session`。
+  - 输出字段：`source_type=attack_detail`, `source_event_id=info_id`, `attack_ip`, `attack_time`, `asset_ip`, `extra_json.http_meta`, `extra_json.rule_hits`。
+  - 验收：详情数据可追溯到同源来源事件（按 `attack_ip + client_id + time_window` 关联）。
+- 3.C `attack_trend` 入站 -> 统计
+  - 输入字段：`attack_time(yyyy-mm-dd HH:MM:SS)`, `attack_count`。
+  - 输出字段：`trend_time_utc`, `trend_count`（仅用于看板聚合，不入 `threat_event`）。
+  - 验收：趋势图与源端总数偏差不超过约定阈值（建议 <= 1%）。
+- 3.D 回退与兼容
+  - 缺失关键字段 `attack_ip`：标记无效并写错误审计。
+  - 其他字段缺失：默认值 + 保留到 `extra_json`。
+  - `response_code != 0`：按 `502xx` 记录，进入重试队列。
+
+#### Step 2-4 工时与角色估算（建议）
+- Step 2（鉴权与通用中间件）
+  - 预估：`40~56h`。
+  - 角色：后端 `24~32h`，前端 `12~16h`，测试 `4~8h`。
+  - 依赖：数据库用户表、JWT 密钥、路由守卫基础框架。
+- Step 3（防御链路 + HFish 兼容）
+  - 预估：`56~80h`。
+  - 角色：后端 `36~52h`，前端 `12~16h`，测试 `8~12h`。
+  - 依赖：Step 2 已完成、`threat_event/execution_task` 表可用、审计服务可用。
+- Step 4（扫描链路）
+  - 预估：`48~72h`。
+  - 角色：后端 `30~44h`，前端 `12~18h`，测试 `6~10h`。
+  - 依赖：资产模型、任务队列、扫描工具执行环境。
+- 执行节奏建议
+  - 第 1 天：后端实现与单测。
+  - 第 2 天：前后端联调与错误分支补齐。
+  - 第 3 天：E2E 与回归验证，更新审计与运行文档。
+
+#### Step 3 任务单（负责人/工时/依赖/完成证据）
+- T3-01 HFish 入站 DTO 定义
+  - 负责人：后端；工时：`2h`；依赖：无。
+  - 完成证据：DTO/Schema 代码 + 校验用例。
+- T3-02 源端响应校验与错误码映射
+  - 负责人：后端；工时：`2h`；依赖：T3-01。
+  - 完成证据：`response_code!=0` 返回 `502xx` 的测试。
+- T3-03 `list_infos` 解析器
+  - 负责人：后端；工时：`4h`；依赖：T3-01。
+  - 完成证据：样例数据解析断言通过。
+- T3-04 `attack_infos` 解析器
+  - 负责人：后端；工时：`6h`；依赖：T3-01。
+  - 完成证据：`info_id/attack_rule/http_meta` 映射测试通过。
+- T3-05 `attack_trend` 解析器
+  - 负责人：后端；工时：`2h`；依赖：T3-01。
+  - 完成证据：趋势时间转换与聚合输出正确。
+- T3-06 时间与标签标准化
+  - 负责人：后端；工时：`3h`；依赖：T3-03,T3-04。
+  - 完成证据：`attack_time` UTC 化、标签回退链测试。
+- T3-07 容错与扩展字段保留
+  - 负责人：后端；工时：`3h`；依赖：T3-03,T3-04。
+  - 完成证据：缺字段回退至 `extra_json/raw_payload`。
+- T3-08 去重与幂等键实现
+  - 负责人：后端；工时：`3h`；依赖：T3-03,T3-04。
+  - 完成证据：重复入站不重复写活跃事件。
+- T3-09 `threat_event` 落库与状态初始化
+  - 负责人：后端；工时：`4h`；依赖：T3-06,T3-08。
+  - 完成证据：入库记录字段齐全，状态为 `PENDING`。
+- T3-10 接入审计日志
+  - 负责人：后端；工时：`2h`；依赖：T3-09。
+  - 完成证据：审计中心可检索接入动作。
+- T3-11 AI 评分接入与降级兜底
+  - 负责人：后端；工时：`4h`；依赖：T3-09。
+  - 完成证据：AI 可用与不可用两分支均可运行。
+- T3-12 待审批列表 API
+  - 负责人：后端；工时：`3h`；依赖：T3-09。
+  - 完成证据：筛选/分页/排序接口测试通过。
+- T3-13 审批接口（Approve/Reject）
+  - 负责人：后端；工时：`3h`；依赖：T3-12。
+  - 完成证据：状态流转与审计写入正确。
+- T3-14 前端待办列表联调
+  - 负责人：前端；工时：`5h`；依赖：T3-12。
+  - 完成证据：列表展示、筛选、详情可用。
+- T3-15 审批交互联调
+  - 负责人：前端；工时：`4h`；依赖：T3-13。
+  - 完成证据：Approve/Reject 操作及反馈链路通畅。
+- T3-16 执行器触发与重试策略
+  - 负责人：后端；工时：`5h`；依赖：T3-13。
+  - 完成证据：失败重试与 `MANUAL_REQUIRED` 可复现。
+- T3-17 防御链路集成测试
+  - 负责人：测试；工时：`6h`；依赖：T3-16。
+  - 完成证据：E2E（入站->审批->执行）通过。
+- T3-18 防御链路验收与复盘
+  - 负责人：后端+前端+测试；工时：`3h`；依赖：T3-17。
+  - 完成证据：验收记录、问题清单、修复计划。
+
+### Step 5：AI 中枢（对话/报告/TTS）
+- [ ] 5.1 实现 `ai_chat`：会话创建、上下文拼装、消息入库。
+- [ ] 5.2 实现 `report`：摘要版/详细版报告生成与导出。
+- [ ] 5.3 实现 `tts`：任务提交、状态查询、音频索引记录。
+- [ ] 5.4 在 `AICenter` 打通对话、报告、TTS 三个入口。
+- [ ] 5.5 验证：可对同一事件/任务发起问答并导出报告。
+
+### Step 6：外部联动（插件/推送/防火墙）
+- [ ] 6.1 实现 `plugin_registry` 管理与启停接口。
+- [ ] 6.2 实现 `push_channel`（至少 1 种通道）。
+- [ ] 6.3 实现防火墙同步接口与签名校验。
+- [ ] 6.4 实现防火墙幂等键（`Idempotency-Key` -> `request_hash`）。
+- [ ] 6.5 实现回执处理、失败重试、`MANUAL_REQUIRED` 转人工。
+- [ ] 6.6 验证：封禁后可触发防火墙同步并正确记录回执。
+
+### Step 7：安全加固（上线前必须完成）
+- [ ] 7.1 实现凭据加密存储（AES-GCM）与 `key_version`。
+- [ ] 7.2 实现密钥轮换流程（旧密钥可解，新密钥重加密）。
+- [ ] 7.3 高风险动作添加二次确认与操作原因必填。
+- [ ] 7.4 增加接口限流、防暴力登录、白名单策略。
+- [ ] 7.5 完善审计日志不可篡改策略（追加写 + 校验）。
+- [ ] 7.6 验证：随机抽检高风险动作，审计字段齐全且可追溯。
+
+### Step 8：可观测性与告警
+- [ ] 8.1 统一结构化日志字段（含 `trace_id`）。
+- [ ] 8.2 接入核心指标：成功率、延迟、重试率、失败类型分布。
+- [ ] 8.3 配置告警阈值（MCP 失败率、防火墙回执失败率、扫描超时率）。
+- [ ] 8.4 搭建基础看板（防御、扫描、外部依赖、AI 可用性）。
+- [ ] 8.5 验证：人为制造失败场景，告警能在阈值内触发。
+
+### Step 9：测试与 CI 门禁
+- [ ] 9.1 单元测试：策略引擎、状态机、解析器。
+- [ ] 9.2 集成测试：API + SQLite + Mock MCP/防火墙。
+- [ ] 9.3 E2E：防御闭环 1 条、扫描闭环 1 条。
+- [ ] 9.4 前端关键交互测试：审批、状态刷新、错误提示。
+- [ ] 9.5 新增后台壳 E2E：Sidebar 路由切换、Topbar 模式切换、右上角退出登录。
+- [ ] 9.6 新增权限 E2E：viewer/operator/admin 菜单可见性与接口访问控制。
+- [ ] 9.7 新增系统功能 E2E：通知已读、全局搜索跳转、模式切换审计写入。
+- [ ] 9.8 CI 接入：lint + test + build + e2e。
+- [ ] 9.9 阻断规则：任一关键流程失败禁止合并。
+- [ ] 9.10 验证：主分支流水线连续 3 次通过。
+
+### Step 10：预发布与上线
+- [ ] 10.1 完成数据迁移演练与回滚演练。
+- [ ] 10.2 完成压测（API、队列、扫描并发）并输出报告。
+- [ ] 10.3 完成故障演练（MCP/AI/防火墙不可用）。
+- [ ] 10.4 完成值班手册、应急预案、联系人清单。
+- [ ] 10.5 小流量灰度发布并观察核心指标。
+- [ ] 10.6 正式放量上线并冻结版本。
+- [ ] 10.7 验证：上线后一周无 P0/P1 故障，SLO 达标。
+
+## 每步完成定义（DoD 模板）
+- [ ] 代码已合并且 CI 通过。
+- [ ] 关键日志与审计字段完整。
+- [ ] 文档已同步更新（接口、状态机、配置项）。
+- [ ] 失败分支已验证（至少 1 个异常场景）。
+- [ ] 有可复现的验证记录（命令输出/截图/测试报告）。
+
+## 后台功能专项排期（两周冲刺模板）
+### Sprint A（第 1 周）：后台壳与系统能力
+- Day 1
+  - [ ] 建立 App Shell、路由骨架、权限路由守卫。
+  - [ ] 接入 `useAuthStore/useAppStore`。
+- Day 2
+  - [ ] 完成 Sidebar 菜单、权限可见性、激活高亮。
+  - [ ] 完成 Topbar 基础布局与系统状态显示。
+- Day 3
+  - [ ] 完成主动/被动模式开关 UI + 确认弹窗 + 原因输入。
+  - [ ] 打通 `GET/POST /system/mode`。
+- Day 4
+  - [ ] 完成右上角菜单：通知、个人中心、安全设置、退出登录。
+  - [ ] 打通 `POST /auth/logout` 并验证会话清理。
+- Day 5
+  - [ ] 完成 `overview` 页面卡片、趋势、待办模块。
+  - [ ] 执行 Sprint A 回归（菜单切换/模式切换/退出登录/审计）。
+
+### Sprint B（第 2 周）：页面联调与系统闭环
+- Day 1
+  - [ ] 完成 `defense` 页面联调（列表、详情、审批、失败重试入口）。
+- Day 2
+  - [ ] 完成 `scan` 页面联调（资产、任务、结果、筛选）。
+- Day 3
+  - [ ] 完成 `ai-center` 页面联调（会话、报告、TTS）。
+- Day 4
+  - [ ] 完成 `integrations/audit/settings` 页面联调。
+- Day 5
+  - [ ] 跑通专项 E2E：权限矩阵、模式切换、通知已读、全局搜索、退出登录。
+  - [ ] 输出问题清单与下轮修复计划。
 
