@@ -277,22 +277,152 @@
 ## 简单 Mind 思维导图
 ```text
 AimiGuard（AI安全运营平台）
-├─ 一、防御监控
-│  ├─ 威胁输入（hifi蜜罐 / 黑名单API）
-│  ├─ SQLite临时缓存
-│  ├─ AI风险评分与策略建议
-│  ├─ 自动控制交换机封禁（MCP + tele）
-│  └─ 处置结果回传与审计
-├─ 二、探测扫描（主动）
-│  ├─ 目标资产管理（IP/网段/主机）
-│  ├─ 调用 Kali / MCP / 漏洞工具
-│  ├─ 端口与服务识别 / 漏洞检测
-│  ├─ 扫描结果写入SQLite
-│  └─ AI生成风险报告与修复建议
-└─ 三、AI智能中枢
-   ├─ AI对话（问答、追问、解释）
-   ├─ AI分析（关联、聚类、异常检测）
-   └─ AI报告（日报/周报/专项报告）
+├─ 一、防御监控（被动响应）
+│  ├─ 威胁输入
+│  │  ├─ hifi 蜜罐告警推送
+│  │  ├─ 黑名单 API 轮询
+│  │  └─ 第三方威胁情报对接
+│  ├─ 数据处理
+│  │  ├─ 字段标准化与去重
+│  │  ├─ SQLite 临时缓存
+│  │  └─ trace_id 全链路追踪
+│  ├─ AI 决策
+│  │  ├─ 风险评分（0-100）
+│  │  ├─ 动作建议（封禁/观察/放行）
+│  │  ├─ 理由生成与置信度
+│  │  └─ 模型路由（本地/云端切换）
+│  ├─ 自动执行
+│  │  ├─ MCP tools 调用交换机
+│  │  ├─ tele 端口多设备控制
+│  │  ├─ 失败重试与回滚标记
+│  │  └─ 执行状态实时同步
+│  └─ 审计与回传
+│     ├─ 处置结果写入 audit_log
+│     ├─ 防火墙同步状态跟踪
+│     └─ 异常推送（钉钉/企微/邮件）
+│
+├─ 二、探测扫描（主动发现）
+│  ├─ 资产管理
+│  │  ├─ 单 IP / 网段 / 资产组
+│  │  ├─ 资产标签与分组
+│  │  └─ 扫描任务调度
+│  ├─ 扫描引擎
+│  │  ├─ Kali 工具集成（nmap/masscan）
+│  │  ├─ MCP 漏洞工具调用
+│  │  ├─ 端口与服务识别
+│  │  ├─ 漏洞检测与弱口令爆破
+│  │  └─ 扫描进度与状态机
+│  ├─ 结果处理
+│  │  ├─ 扫描结果写入 SQLite
+│  │  ├─ AI 风险分级与关联
+│  │  └─ 漏洞去重与聚合
+│  └─ 报告生成
+│     ├─ 摘要版（高管视角）
+│     ├─ 详细版（技术视角）
+│     ├─ 修复建议与优先级
+│     └─ 导出与审计存档
+│
+├─ 三、AI 智能中枢
+│  ├─ AI 对话
+│  │  ├─ 自然语言问答
+│  │  ├─ 上下文追问
+│  │  ├─ 事件解释与溯源
+│  │  └─ 语音 TTS（本地模型）
+│  ├─ AI 分析
+│  │  ├─ 威胁关联与聚类
+│  │  ├─ 异常检测与趋势预测
+│  │  ├─ 攻击链还原
+│  │  └─ 风险优先级排序
+│  └─ AI 报告
+│     ├─ 日报/周报/月报
+│     ├─ 专项报告（应急响应/合规）
+│     ├─ 可视化图表生成
+│     └─ 自动摘要与建议
+│
+├─ 四、系统能力（P0 成品化）
+│  ├─ 版本与发布（R0）
+│  │  ├─ 版本查询与追踪
+│  │  ├─ 发布历史记录
+│  │  └─ 一键回滚与健康检查
+│  ├─ 配置治理（R1）
+│  │  ├─ 多环境配置隔离
+│  │  ├─ 启动前配置校验
+│  │  └─ 配置完整性检查
+│  ├─ 权限控制（R2）
+│  │  ├─ RBAC 三层校验
+│  │  ├─ 高风险动作权限点
+│  │  └─ 未授权审计记录
+│  ├─ 备份恢复（R3）
+│  │  ├─ 全量/增量备份
+│  │  ├─ 一致性检查
+│  │  └─ 热/冷数据分层
+│  ├─ 安全门禁（R4）
+│  │  ├─ 依赖漏洞扫描
+│  │  ├─ 镜像安全扫描
+│  │  ├─ SBOM 生成
+│  │  └─ 高危阈值阻断
+│  ├─ 告警闭环（R5）
+│  │  ├─ 告警统一入表
+│  │  ├─ 状态机流转
+│  │  ├─ 确认/关闭/复盘
+│  │  └─ 关键失败自动触发
+│  ├─ 指标采集（R6）
+│  │  ├─ 延迟/成功率/队列深度
+│  │  ├─ 阈值告警规则
+│  │  ├─ 时序数据聚合
+│  │  └─ 仪表盘实时展示
+│  └─ 数据保护（R7）
+│     ├─ 敏感字段脱敏
+│     ├─ 导出二次确认
+│     ├─ 审计日志 append-only
+│     └─ 导出内容哈希校验
+│
+├─ 五、技术架构
+│  ├─ 前端
+│  │  ├─ Vue 3 + TypeScript
+│  │  ├─ Hash 路由模式（#/）
+│  │  ├─ Tailwind CSS
+│  │  ├─ Shadcn Vue 组件库
+│  │  ├─ AI Elements Vue 组件库
+│  │  ├─ Pinia 状态管理
+│  │  └─ ECharts 可视化
+│  ├─ 后端
+│  │  ├─ Python FastAPI / Flask
+│  │  ├─ SQLite 数据缓存
+│  │  └─ Alembic 数据库迁移
+│  ├─ AI 能力
+│  │  ├─ 本地模型优先（Ollama/LM Studio）
+│  │  ├─ 云端模型备用（OpenAI/Claude）
+│  │  ├─ 模型路由与降级
+│  │  └─ TTS 本地化（Coqui/Piper）
+│  ├─ 集成能力
+│  │  ├─ MCP 插件体系
+│  │  ├─ 防火墙 API 对接
+│  │  ├─ 蜜罐数据接入
+│  │  └─ 第三方工具调用（Kali/nmap）
+│  └─ 部署运维
+│     ├─ 前后端分离部署
+│     ├─ 统一 /api/ 前缀
+│     ├─ 日志聚合与监控
+│     └─ 备份与灾备策略
+│
+└─ 六、数据流转
+   ├─ 入站数据
+   │  ├─ 蜜罐告警 → threat_event
+   │  ├─ 扫描结果 → scan_finding
+   │  └─ 用户操作 → audit_log
+   ├─ 处理流程
+   │  ├─ AI 评分 → ai_decision
+   │  ├─ 任务队列 → execution_task
+   │  └─ 防火墙同步 → firewall_sync_task
+   ├─ 出站数据
+   │  ├─ 封禁指令 → 交换机/防火墙
+   │  ├─ 告警推送 → 钉钉/企微/邮件
+   │  └─ 报告导出 → PDF/CSV/JSON
+   └─ 审计链路
+      ├─ 全链路 trace_id 透传
+      ├─ 关键动作 audit_log 记录
+      └─ 敏感操作二次确认
 ```
 
 ## 核心原理（基础版）
@@ -898,15 +1028,509 @@ AimiGuard（AI安全运营平台）
 - [ ] 验收 KPI 量化：误报率、处置 SLA、封禁成功率、报告生成时延按周期复盘。
 - [ ] 外部联动治理：MCP 插件准入清单、风险分级、熔断与降级策略、第三方故障隔离。
 
-### P0 成品化补丁（可直接执行）
-- [ ] R0 发布治理：冻结 `main/release/hotfix` 流程、`SemVer`、`CHANGELOG` 与回滚审批链（负责人：Tech Lead；验收：可在 10 分钟内回滚；证据：发布 SOP + 回滚演练记录）。
-- [ ] R1 环境矩阵：补齐 `dev/staging/prod` 配置清单（必填项、默认值、密钥来源、轮换周期）（负责人：后端 + 运维；验收：新环境可 30 分钟内落地；证据：`env-matrix` 文档 + 启动截图）。
-- [ ] R2 权限矩阵：建立“角色-页面-接口-动作”授权表，覆盖审批、封禁、模式切换、系统设置（负责人：后端 + 前端；验收：越权请求全部拒绝并留痕；证据：RBAC 用例与审计日志）。
-- [ ] R3 灾备与生命周期：定义备份频率、恢复演练、`RPO/RTO`，以及 `threat_event/scan_finding/audit_log` 保留与归档策略（负责人：运维；验收：恢复演练通过；证据：演练报告 + 归档任务记录）。
-- [ ] R4 供应链安全：落地依赖漏洞扫描、镜像扫描、`SBOM`、`SAST/DAST` 门禁（负责人：后端 + 运维；验收：高危漏洞阻断发布；证据：CI 安全流水线报告）。
-- [ ] R5 值班与事故机制：建立 `P1/P2/P3` 事故分级、升级路径、响应时限与复盘模板（负责人：项目负责人；验收：值班表可执行且演练通过；证据：值班排班 + 演练记录）。
-- [ ] R6 非功能门槛：明确可用性、P95/P99 延迟、并发、审计完整率红线（负责人：架构 + 测试；验收：压测与观测指标达标；证据：压测报告 + 仪表盘截图）。
-- [ ] R7 合规与数据保护：定义 IP/身份信息脱敏、导出审批、访问留痕、最小可见范围（负责人：后端 + 安全；验收：敏感字段默认脱敏；证据：字段策略表 + 审计抽检结果）。
+### P0 成品化补丁（仅功能清单）
+- [ ] R0 版本与发布能力（功能化）
+  - 实现 `/api/system/version`：返回 `app_version/git_commit/build_time/schema_version`。
+  - 实现数据库 `release_history`：记录 `version/commit/deploy_env/deploy_at/status`。
+  - 实现回滚接口 `/api/system/rollback`（仅允许回滚到最近 N 个可用版本）。
+  - 回滚后自动执行：配置回切 + 数据库迁移版本校验 + 服务健康检查。
+
+- [ ] R1 环境配置能力（功能化）
+  - 实现配置加载优先级：`ENV > .env > default`。
+  - 实现启动前配置校验：缺失关键项（JWT、DB、加密密钥）直接阻止启动。
+  - 实现 `/api/system/config-check`：返回配置完整性与风险项（不返回明文密钥）。
+  - 配置项支持 `dev/staging/prod` 隔离，禁止跨环境复用敏感值。
+
+- [ ] R2 权限控制能力（功能化）
+  - 实现 RBAC 三层校验：页面权限、接口权限、动作权限。
+  - 为高风险动作增加权限点：`approve_event/reject_event/block_ip/switch_mode/update_system`。
+  - 未授权请求统一返回 `40301`，并写入 `audit_log`（含 `user_id/action/resource/trace_id`）。
+  - 前端路由守卫与按钮可见性统一使用权限点，避免“前端隐藏但后端可调”。
+
+- [ ] R3 数据备份与恢复能力（功能化）
+  - 实现数据库备份任务：全量每日 + 增量每小时（可配置）。
+  - 实现 `/api/system/backup/list` 与 `/api/system/backup/restore`。
+  - 恢复后自动执行一致性检查：核心表行数、关键索引、最新事件可读性。
+  - 为 `threat_event/scan_finding/audit_log` 实现归档任务与查询透明化（热/冷分层）。
+
+- [ ] R4 安全扫描门禁能力（功能化）
+  - CI 增加依赖漏洞扫描与镜像扫描步骤，输出结构化报告 JSON。
+  - 高危漏洞阈值触发发布阻断（可在配置中定义 `critical/high` 阈值）。
+  - 生成并保存 `SBOM`（组件名、版本、许可证、漏洞状态）。
+  - 提供 `/api/system/security-report/latest` 用于后台查看最近一次扫描结果。
+
+- [ ] R5 运行告警与事故闭环（功能化）
+  - 告警统一入表 `alert_event`：`level/type/source/summary/payload/status`。
+  - 实现告警状态机：`NEW -> ACKED -> RESOLVED -> POSTMORTEM`。
+  - 实现 `/api/alerts` 列表、确认、关闭、复盘记录接口。
+  - 关键失败（执行器连续失败、防火墙同步失败、AI 服务降级）必须自动触发告警。
+
+- [ ] R6 非功能指标采集（功能化）
+  - 实现指标采集：`api_latency_p95/p99`、`queue_depth`、`task_success_rate`、`audit_write_rate`。
+  - 实现 `/api/system/metrics/overview` 聚合接口用于仪表盘展示。
+  - 实现阈值告警：延迟、失败率、队列积压超过阈值自动触发 `alert_event`。
+  - 所有关键链路（入站->审批->执行）必须有 `trace_id` 全链路透传。
+
+- [ ] R7 数据保护与审计能力（功能化）
+  - 敏感字段默认脱敏返回：IP、账号标识、会话标识（按规则局部掩码）。
+  - 实现导出接口的二次确认与导出审计：`who/when/what/why/trace_id`。
+  - 审计日志不可更新不可删除（append-only），仅允许按条件查询。
+  - 实现 `/api/audit/export`，导出结果包含校验哈希，保证导出内容可追溯。
+
+#### P0 详细实施卡（接口 + 数据 + 最小测试）
+- R0 版本与回滚
+  - 接口：`GET /api/system/version`、`POST /api/system/rollback`。
+  - 数据：`release_history(version, commit, schema_version, env, status, created_at)`。
+  - 最小测试：查询版本成功；回滚到合法版本成功；回滚到不存在版本返回 `404xx`。
+
+- R1 配置治理
+  - 接口：`GET /api/system/config-check`（仅返回完整性，不返回密文/明文值）。
+  - 数据：`system_config_snapshot(key, source, is_sensitive, loaded_at)`。
+  - 最小测试：缺失 `JWT_SECRET` 启动失败；`dev/staging/prod` 配置隔离有效。
+
+- R2 RBAC 权限
+  - 接口：`GET /api/auth/me/permissions`、`POST /api/auth/role/bind`。
+  - 数据：`role`、`permission`、`role_permission`、`user_role`、`access_audit`。
+  - 最小测试：无权限调用审批/封禁接口返回 `40301`；授权后可调用并记录审计。
+
+- R3 备份恢复
+  - 接口：`GET /api/system/backup/list`、`POST /api/system/backup/create`、`POST /api/system/backup/restore`。
+  - 数据：`backup_job(type, started_at, finished_at, status, artifact_uri, checksum)`。
+  - 最小测试：可创建全量备份；可恢复最近可用备份；恢复后核心表可读且索引存在。
+
+- R4 安全门禁
+  - 接口：`GET /api/system/security-report/latest`。
+  - 数据：`security_scan_report(scan_type, tool, summary_json, critical_count, high_count, created_at)`。
+  - 最小测试：高危漏洞超过阈值时流水线失败；低于阈值时流水线通过并存档报告。
+
+- R5 告警闭环
+  - 接口：`GET /api/alerts`、`POST /api/alerts/{id}/ack`、`POST /api/alerts/{id}/resolve`、`POST /api/alerts/{id}/postmortem`。
+  - 数据：`alert_event(level, type, source, summary, payload_json, status, trace_id, created_at)`。
+  - 最小测试：关键失败自动生成告警；告警可完成 `NEW->ACKED->RESOLVED->POSTMORTEM`。
+
+- R6 指标与阈值
+  - 接口：`GET /api/system/metrics/overview`、`GET /api/system/metrics/timeseries`。
+  - 数据：`metric_point(metric, value, labels_json, ts)`、`metric_rule(metric, operator, threshold, window)`。
+  - 最小测试：P95 超阈值触发告警；队列堆积触发告警；恢复后自动关闭告警。
+
+- R7 脱敏与审计导出
+  - 接口：`POST /api/audit/export`、`GET /api/audit/export/{job_id}`。
+  - 数据：`audit_log(actor, action, target, reason, trace_id, created_at)`、`audit_export_job(filters_json, status, file_uri, file_hash)`。
+  - 最小测试：导出文件包含哈希；脱敏字段不泄露原值；审计日志不可更新不可删除。
+
+#### P0 一次性联调顺序（单人开发建议）
+- 先打通 R1（配置）+ R0（版本）保证服务稳定可启动、可识别版本。
+- 再实现 R2（权限）+ R7（审计）保证所有关键动作先有权限和留痕。
+- 然后实现 R5（告警）+ R6（指标）保证系统故障可见。
+- 最后实现 R3（备份）+ R4（安全门禁）完成上线前兜底能力。
+
+#### P0 API 规范（请求/响应/错误码）
+
+##### R0 版本与回滚
+```json
+// GET /api/system/version
+// 响应 200
+{
+  "app_version": "1.2.3",
+  "git_commit": "a3f5c2d",
+  "build_time": "2026-02-22T10:30:00Z",
+  "schema_version": "20260222_001",
+  "env": "production"
+}
+
+// POST /api/system/rollback
+// 请求
+{
+  "target_version": "1.2.2",
+  "reason": "回滚原因描述",
+  "trace_id": "req_abc123"
+}
+// 响应 200（回滚成功）
+{
+  "status": "success",
+  "rolled_back_to": "1.2.2",
+  "actions_taken": ["config_reverted", "schema_checked", "health_verified"],
+  "trace_id": "req_abc123"
+}
+// 响应 40404（版本不存在）
+{
+  "error": "version_not_found",
+  "message": "目标版本 1.2.2 不在可回滚列表中",
+  "available_versions": ["1.2.3", "1.2.1", "1.2.0"]
+}
+// 响应 50001（回滚失败）
+{
+  "error": "rollback_failed",
+  "message": "数据库迁移版本校验失败",
+  "detail": "schema version mismatch",
+  "trace_id": "req_abc123"
+}
+```
+
+##### R1 环境配置
+```json
+// GET /api/system/config-check
+// 响应 200（配置完整）
+{
+  "status": "healthy",
+  "missing_keys": [],
+  "risk_items": [],
+  "env": "production",
+  "loaded_at": "2026-02-22T10:00:00Z"
+}
+// 响应 50002（配置缺失）
+{
+  "status": "unhealthy",
+  "missing_keys": ["JWT_SECRET", "DB_ENCRYPTION_KEY"],
+  "risk_items": [
+    {"key": "AI_API_KEY", "issue": "使用默认值，生产环境不安全"}
+  ],
+  "env": "production"
+}
+```
+
+##### R2 RBAC 权限
+```json
+// GET /api/auth/me/permissions
+// 响应 200
+{
+  "user_id": "user_001",
+  "roles": ["operator", "viewer"],
+  "permissions": [
+    "view_events",
+    "approve_event",
+    "reject_event",
+    "view_audit"
+  ],
+  "denied_permissions": ["block_ip", "switch_mode", "update_system"]
+}
+
+// POST /api/auth/role/bind
+// 请求
+{
+  "user_id": "user_002",
+  "role": "admin",
+  "reason": "升级为管理员",
+  "trace_id": "req_def456"
+}
+// 响应 200
+{
+  "status": "success",
+  "user_id": "user_002",
+  "new_roles": ["admin", "operator"],
+  "trace_id": "req_def456"
+}
+
+// 未授权调用示例（任意需要权限的接口）
+// 响应 40301
+{
+  "error": "permission_denied",
+  "message": "缺少权限: approve_event",
+  "required_permission": "approve_event",
+  "user_roles": ["viewer"],
+  "trace_id": "req_xyz789",
+  "audit_logged": true
+}
+```
+
+##### R3 备份恢复
+```json
+// GET /api/system/backup/list
+// 响应 200
+{
+  "backups": [
+    {
+      "id": "backup_001",
+      "type": "full",
+      "started_at": "2026-02-22T02:00:00Z",
+      "finished_at": "2026-02-22T02:15:00Z",
+      "status": "success",
+      "artifact_uri": "s3://backups/full_20260222.tar.gz",
+      "checksum": "sha256:abc123...",
+      "size_bytes": 1048576000
+    },
+    {
+      "id": "backup_002",
+      "type": "incremental",
+      "started_at": "2026-02-22T03:00:00Z",
+      "finished_at": "2026-02-22T03:05:00Z",
+      "status": "success",
+      "artifact_uri": "s3://backups/incr_20260222_03.tar.gz",
+      "checksum": "sha256:def456...",
+      "size_bytes": 52428800
+    }
+  ]
+}
+
+// POST /api/system/backup/create
+// 请求
+{
+  "type": "full",
+  "reason": "手动全量备份",
+  "trace_id": "req_backup_001"
+}
+// 响应 202（异步任务已创建）
+{
+  "job_id": "backup_003",
+  "status": "pending",
+  "estimated_duration_seconds": 900,
+  "trace_id": "req_backup_001"
+}
+
+// POST /api/system/backup/restore
+// 请求
+{
+  "backup_id": "backup_001",
+  "reason": "恢复到昨日状态",
+  "trace_id": "req_restore_001"
+}
+// 响应 200（恢复成功）
+{
+  "status": "success",
+  "restored_from": "backup_001",
+  "consistency_checks": {
+    "threat_event_count": 12345,
+    "indexes_verified": true,
+    "latest_event_readable": true
+  },
+  "trace_id": "req_restore_001"
+}
+// 响应 50003（恢复失败）
+{
+  "error": "restore_failed",
+  "message": "一致性检查失败",
+  "detail": "threat_event 表行数不匹配",
+  "trace_id": "req_restore_001"
+}
+```
+
+##### R4 安全门禁
+```json
+// GET /api/system/security-report/latest
+// 响应 200
+{
+  "scan_id": "scan_20260222_001",
+  "scan_type": "dependency_vulnerability",
+  "tool": "trivy",
+  "scanned_at": "2026-02-22T09:00:00Z",
+  "summary": {
+    "critical": 0,
+    "high": 2,
+    "medium": 5,
+    "low": 12
+  },
+  "vulnerabilities": [
+    {
+      "cve": "CVE-2024-12345",
+      "severity": "high",
+      "package": "requests",
+      "installed_version": "2.28.0",
+      "fixed_version": "2.31.0",
+      "description": "SSRF vulnerability in requests library"
+    }
+  ],
+  "sbom_uri": "s3://security/sbom_20260222.json",
+  "passed_gate": false,
+  "gate_rule": "critical=0 AND high<=1"
+}
+```
+
+##### R5 告警闭环
+```json
+// GET /api/alerts?status=NEW&page=1&size=20
+// 响应 200
+{
+  "alerts": [
+    {
+      "id": "alert_001",
+      "level": "critical",
+      "type": "executor_failure",
+      "source": "firewall_executor",
+      "summary": "防火墙同步连续失败 5 次",
+      "payload": {
+        "firewall_vendor": "paloalto",
+        "failed_ips": ["1.2.3.4", "5.6.7.8"],
+        "error": "connection timeout"
+      },
+      "status": "NEW",
+      "trace_id": "alert_trace_001",
+      "created_at": "2026-02-22T10:30:00Z"
+    }
+  ],
+  "total": 3,
+  "page": 1,
+  "size": 20
+}
+
+// POST /api/alerts/alert_001/ack
+// 请求
+{
+  "ack_by": "user_001",
+  "note": "已确认，正在排查",
+  "trace_id": "req_ack_001"
+}
+// 响应 200
+{
+  "status": "success",
+  "alert_id": "alert_001",
+  "new_status": "ACKED",
+  "acked_at": "2026-02-22T10:35:00Z"
+}
+
+// POST /api/alerts/alert_001/resolve
+// 请求
+{
+  "resolved_by": "user_001",
+  "resolution": "已修复防火墙连接配置",
+  "trace_id": "req_resolve_001"
+}
+// 响应 200
+{
+  "status": "success",
+  "alert_id": "alert_001",
+  "new_status": "RESOLVED",
+  "resolved_at": "2026-02-22T11:00:00Z"
+}
+
+// POST /api/alerts/alert_001/postmortem
+// 请求
+{
+  "author": "user_001",
+  "root_cause": "防火墙 API 密钥过期",
+  "action_items": ["更新密钥轮换流程", "增加密钥过期告警"],
+  "trace_id": "req_postmortem_001"
+}
+// 响应 200
+{
+  "status": "success",
+  "alert_id": "alert_001",
+  "new_status": "POSTMORTEM",
+  "postmortem_at": "2026-02-22T12:00:00Z"
+}
+```
+
+##### R6 指标与阈值
+```json
+// GET /api/system/metrics/overview
+// 响应 200
+{
+  "metrics": {
+    "api_latency_p95_ms": 120,
+    "api_latency_p99_ms": 350,
+    "queue_depth": 45,
+    "task_success_rate": 0.98,
+    "audit_write_rate_per_sec": 12.5
+  },
+  "thresholds": {
+    "api_latency_p95_ms": {"threshold": 200, "status": "healthy"},
+    "api_latency_p99_ms": {"threshold": 500, "status": "healthy"},
+    "queue_depth": {"threshold": 100, "status": "healthy"},
+    "task_success_rate": {"threshold": 0.95, "status": "healthy"}
+  },
+  "collected_at": "2026-02-22T10:40:00Z"
+}
+
+// GET /api/system/metrics/timeseries?metric=api_latency_p95_ms&from=2026-02-22T09:00:00Z&to=2026-02-22T10:00:00Z
+// 响应 200
+{
+  "metric": "api_latency_p95_ms",
+  "unit": "milliseconds",
+  "data_points": [
+    {"ts": "2026-02-22T09:00:00Z", "value": 110},
+    {"ts": "2026-02-22T09:05:00Z", "value": 115},
+    {"ts": "2026-02-22T09:10:00Z", "value": 120}
+  ]
+}
+
+// 阈值告警自动触发示例（系统内部行为，无需手动调用）
+// 当 api_latency_p95_ms > 200 时，自动创建 alert_event：
+{
+  "level": "warning",
+  "type": "metric_threshold_exceeded",
+  "source": "metrics_monitor",
+  "summary": "API P95 延迟超过阈值",
+  "payload": {
+    "metric": "api_latency_p95_ms",
+    "current_value": 250,
+    "threshold": 200,
+    "window": "5m"
+  },
+  "status": "NEW"
+}
+```
+
+##### R7 脱敏与审计导出
+```json
+// POST /api/audit/export
+// 请求
+{
+  "filters": {
+    "actor": "user_001",
+    "action": "approve_event",
+    "start_time": "2026-02-20T00:00:00Z",
+    "end_time": "2026-02-22T23:59:59Z"
+  },
+  "reason": "月度审计报告",
+  "trace_id": "req_export_001"
+}
+// 响应 202（异步任务已创建）
+{
+  "job_id": "export_001",
+  "status": "pending",
+  "estimated_duration_seconds": 60,
+  "trace_id": "req_export_001"
+}
+
+// GET /api/audit/export/export_001
+// 响应 200（导出完成）
+{
+  "job_id": "export_001",
+  "status": "completed",
+  "file_uri": "s3://audit-exports/export_001.csv",
+  "file_hash": "sha256:xyz789...",
+  "row_count": 1234,
+  "created_at": "2026-02-22T10:50:00Z",
+  "completed_at": "2026-02-22T10:51:00Z"
+}
+// 响应 202（导出进行中）
+{
+  "job_id": "export_001",
+  "status": "running",
+  "progress": 0.65
+}
+
+// 审计日志查询示例（脱敏字段）
+// GET /api/audit?page=1&size=20
+// 响应 200
+{
+  "logs": [
+    {
+      "id": "audit_001",
+      "actor": "user_001",
+      "action": "approve_event",
+      "target": "event_12345",
+      "target_ip": "1.2.***.**",  // 脱敏
+      "reason": "正常流量",
+      "trace_id": "req_abc123",
+      "created_at": "2026-02-22T10:30:00Z"
+    }
+  ],
+  "total": 5678,
+  "page": 1,
+  "size": 20
+}
+```
+
+#### P0 错误码统一规范
+| 错误码 | 含义 | 示例场景 |
+|--------|------|----------|
+| `40301` | 权限不足 | 无权限调用审批/封禁接口 |
+| `40404` | 资源不存在 | 回滚到不存在的版本 |
+| `50001` | 回滚失败 | 数据库迁移版本校验失败 |
+| `50002` | 配置异常 | 缺失关键配置项 |
+| `50003` | 恢复失败 | 备份恢复后一致性检查失败 |
+| `50004` | 告警操作失败 | 告警状态机转换非法 |
+| `50005` | 导出失败 | 审计日志导出任务异常 |
 
 ## 工程化落地模板（建议直接纳入迭代）
 ### 1) 可运行骨架与启动约定
@@ -951,6 +1575,245 @@ CREATE TABLE IF NOT EXISTS firewall_sync_task (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- R0: 版本与发布历史
+CREATE TABLE IF NOT EXISTS release_history (
+  id INTEGER PRIMARY KEY,
+  version TEXT NOT NULL,
+  git_commit TEXT NOT NULL,
+  schema_version TEXT NOT NULL,
+  deploy_env TEXT NOT NULL CHECK(deploy_env IN ('dev','staging','production')),
+  status TEXT NOT NULL CHECK(status IN ('deployed','active','rolled_back','failed')),
+  deployed_by TEXT,
+  rollback_reason TEXT,
+  trace_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_release_history_env_status ON release_history(deploy_env, status);
+CREATE INDEX IF NOT EXISTS idx_release_history_version ON release_history(version);
+
+-- R1: 配置快照（用于审计和回滚）
+CREATE TABLE IF NOT EXISTS system_config_snapshot (
+  id INTEGER PRIMARY KEY,
+  config_key TEXT NOT NULL,
+  config_value TEXT,
+  source TEXT NOT NULL CHECK(source IN ('env','dotenv','default')),
+  is_sensitive INTEGER NOT NULL DEFAULT 0,
+  env TEXT NOT NULL CHECK(env IN ('dev','staging','production')),
+  loaded_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_config_snapshot_key_env ON system_config_snapshot(config_key, env);
+CREATE INDEX IF NOT EXISTS idx_config_snapshot_loaded_at ON system_config_snapshot(loaded_at);
+
+-- R2: RBAC 权限体系
+CREATE TABLE IF NOT EXISTS role (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS permission (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  resource TEXT NOT NULL,
+  action TEXT NOT NULL,
+  description TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_permission_resource_action ON permission(resource, action);
+
+CREATE TABLE IF NOT EXISTS role_permission (
+  id INTEGER PRIMARY KEY,
+  role_id INTEGER NOT NULL,
+  permission_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE CASCADE,
+  FOREIGN KEY (permission_id) REFERENCES permission(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_role_permission_unique ON role_permission(role_id, permission_id);
+
+CREATE TABLE IF NOT EXISTS user_role (
+  id INTEGER PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  role_id INTEGER NOT NULL,
+  granted_by TEXT,
+  reason TEXT,
+  trace_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (role_id) REFERENCES role(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_user_role_user_id ON user_role(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_role_unique ON user_role(user_id, role_id);
+
+CREATE TABLE IF NOT EXISTS access_audit (
+  id INTEGER PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  resource TEXT NOT NULL,
+  permission_required TEXT,
+  result TEXT NOT NULL CHECK(result IN ('granted','denied')),
+  reason TEXT,
+  trace_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_access_audit_user_id ON access_audit(user_id);
+CREATE INDEX IF NOT EXISTS idx_access_audit_result ON access_audit(result);
+CREATE INDEX IF NOT EXISTS idx_access_audit_trace_id ON access_audit(trace_id);
+CREATE INDEX IF NOT EXISTS idx_access_audit_created_at ON access_audit(created_at);
+
+-- R3: 备份与恢复
+CREATE TABLE IF NOT EXISTS backup_job (
+  id INTEGER PRIMARY KEY,
+  job_type TEXT NOT NULL CHECK(job_type IN ('full','incremental')),
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  status TEXT NOT NULL CHECK(status IN ('pending','running','success','failed')),
+  artifact_uri TEXT,
+  checksum TEXT,
+  size_bytes INTEGER,
+  error_message TEXT,
+  triggered_by TEXT,
+  trace_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_backup_job_status ON backup_job(status);
+CREATE INDEX IF NOT EXISTS idx_backup_job_started_at ON backup_job(started_at);
+
+CREATE TABLE IF NOT EXISTS restore_job (
+  id INTEGER PRIMARY KEY,
+  backup_id INTEGER NOT NULL,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  status TEXT NOT NULL CHECK(status IN ('pending','running','success','failed')),
+  consistency_check_result TEXT,
+  error_message TEXT,
+  triggered_by TEXT,
+  reason TEXT,
+  trace_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (backup_id) REFERENCES backup_job(id)
+);
+CREATE INDEX IF NOT EXISTS idx_restore_job_status ON restore_job(status);
+CREATE INDEX IF NOT EXISTS idx_restore_job_backup_id ON restore_job(backup_id);
+
+-- R4: 安全扫描报告
+CREATE TABLE IF NOT EXISTS security_scan_report (
+  id INTEGER PRIMARY KEY,
+  scan_type TEXT NOT NULL CHECK(scan_type IN ('dependency_vulnerability','container_image','code_analysis')),
+  tool TEXT NOT NULL,
+  summary_json TEXT NOT NULL,
+  critical_count INTEGER NOT NULL DEFAULT 0,
+  high_count INTEGER NOT NULL DEFAULT 0,
+  medium_count INTEGER NOT NULL DEFAULT 0,
+  low_count INTEGER NOT NULL DEFAULT 0,
+  sbom_uri TEXT,
+  passed_gate INTEGER NOT NULL DEFAULT 0,
+  gate_rule TEXT,
+  scanned_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_security_scan_type ON security_scan_report(scan_type);
+CREATE INDEX IF NOT EXISTS idx_security_scan_scanned_at ON security_scan_report(scanned_at);
+CREATE INDEX IF NOT EXISTS idx_security_scan_passed_gate ON security_scan_report(passed_gate);
+
+-- R5: 告警与事故闭环
+CREATE TABLE IF NOT EXISTS alert_event (
+  id INTEGER PRIMARY KEY,
+  level TEXT NOT NULL CHECK(level IN ('info','warning','critical')),
+  type TEXT NOT NULL,
+  source TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  payload_json TEXT,
+  status TEXT NOT NULL CHECK(status IN ('NEW','ACKED','RESOLVED','POSTMORTEM')),
+  acked_by TEXT,
+  acked_at TEXT,
+  resolved_by TEXT,
+  resolved_at TEXT,
+  resolution TEXT,
+  postmortem_author TEXT,
+  postmortem_at TEXT,
+  postmortem_content TEXT,
+  trace_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_alert_event_status ON alert_event(status);
+CREATE INDEX IF NOT EXISTS idx_alert_event_level ON alert_event(level);
+CREATE INDEX IF NOT EXISTS idx_alert_event_type ON alert_event(type);
+CREATE INDEX IF NOT EXISTS idx_alert_event_trace_id ON alert_event(trace_id);
+CREATE INDEX IF NOT EXISTS idx_alert_event_created_at ON alert_event(created_at);
+
+-- R6: 指标采集与阈值告警
+CREATE TABLE IF NOT EXISTS metric_point (
+  id INTEGER PRIMARY KEY,
+  metric TEXT NOT NULL,
+  value REAL NOT NULL,
+  labels_json TEXT,
+  ts TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_metric_point_metric_ts ON metric_point(metric, ts);
+CREATE INDEX IF NOT EXISTS idx_metric_point_ts ON metric_point(ts);
+
+CREATE TABLE IF NOT EXISTS metric_rule (
+  id INTEGER PRIMARY KEY,
+  metric TEXT NOT NULL UNIQUE,
+  operator TEXT NOT NULL CHECK(operator IN ('gt','lt','gte','lte','eq')),
+  threshold REAL NOT NULL,
+  window_seconds INTEGER NOT NULL DEFAULT 300,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  alert_level TEXT NOT NULL CHECK(alert_level IN ('info','warning','critical')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_metric_rule_enabled ON metric_rule(enabled);
+
+-- R7: 审计日志与导出
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY,
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  target TEXT NOT NULL,
+  target_type TEXT,
+  target_ip TEXT,
+  reason TEXT,
+  result TEXT NOT NULL CHECK(result IN ('success','failed')),
+  error_message TEXT,
+  trace_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(actor);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+CREATE INDEX IF NOT EXISTS idx_audit_log_trace_id ON audit_log(trace_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_log_result ON audit_log(result);
+
+CREATE TABLE IF NOT EXISTS audit_export_job (
+  id INTEGER PRIMARY KEY,
+  filters_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('pending','running','completed','failed')),
+  file_uri TEXT,
+  file_hash TEXT,
+  row_count INTEGER,
+  error_message TEXT,
+  requested_by TEXT NOT NULL,
+  reason TEXT,
+  progress REAL DEFAULT 0,
+  trace_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_export_status ON audit_export_job(status);
+CREATE INDEX IF NOT EXISTS idx_audit_export_requested_by ON audit_export_job(requested_by);
+CREATE INDEX IF NOT EXISTS idx_audit_export_created_at ON audit_export_job(created_at);
 ```
 
 ### 3) API 契约与幂等规范
@@ -1517,3 +2380,1435 @@ requirements.txt
   - [ ] 跑通专项 E2E：权限矩阵、模式切换、通知已读、全局搜索、退出登录。
   - [ ] 输出问题清单与下轮修复计划。
 
+
+
+## 开发指南（快速上手）
+
+### 环境准备
+**必需软件**
+- Python 3.9+
+- Node.js 16+
+- SQLite 3
+- Git
+
+**可选软件（按需）**
+- Ollama / LM Studio（本地 AI 模型）
+- Nmap（扫描功能）
+- Telnet/SSH 客户端（交换机控制）
+
+### 快速启动（本地开发）
+
+#### 1. 克隆仓库
+```powershell
+git clone <repository-url>
+cd aimiguan
+```
+
+#### 2. 后端初始化
+```powershell
+# 进入后端目录
+cd backend
+
+# 创建虚拟环境
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 复制环境配置
+Copy-Item .env.example .env
+
+# 编辑 .env 配置必要参数
+# JWT_SECRET=<生成随机密钥>
+# DATABASE_URL=sqlite:///aimiguard.db
+
+# 初始化数据库
+python scripts/init_db.py
+
+# 启动后端服务（开发模式）
+python main.py --dev
+```
+
+后端默认运行在 `http://localhost:8000`
+
+**启动参数说明**：
+```powershell
+# 开发模式（热重载 + 详细日志）
+python main.py --dev
+
+# 指定端口
+python main.py --port 8080
+
+# 指定主机（允许外部访问）
+python main.py --host 0.0.0.0 --port 8000
+
+# 生产模式（多进程）
+python main.py --workers 4
+```
+
+#### 3. 前端初始化
+```powershell
+# 新开终端，进入前端目录
+cd frontend
+
+# 安装依赖
+npm install
+
+# 复制环境配置
+Copy-Item .env.example .env
+
+# 启动开发服务器
+npm run dev
+```
+
+前端默认运行在 `http://localhost:5173`
+
+#### 4. 验证安装
+- 访问前端：`http://localhost:5173`
+- 检查后端健康：`http://localhost:8000/api/health`
+- 默认登录账号：`admin` / `admin123`（首次启动自动创建）
+
+### 启动配置详解
+
+#### main.py 启动入口
+```python
+# backend/main.py
+import uvicorn
+import argparse
+from pathlib import Path
+
+def main():
+    parser = argparse.ArgumentParser(description='AimiGuard 安全运营平台')
+    parser.add_argument('--host', default='127.0.0.1', help='监听地址')
+    parser.add_argument('--port', type=int, default=8000, help='监听端口')
+    parser.add_argument('--workers', type=int, default=1, help='工作进程数')
+    parser.add_argument('--dev', action='store_true', help='开发模式（热重载）')
+    args = parser.parse_args()
+    
+    # 检查前端构建产物
+    dist_path = Path(__file__).parent / "dist"
+    if not dist_path.exists() and not args.dev:
+        print("警告：未找到前端构建产物 (dist/)，请先运行 npm run build")
+    
+    uvicorn.run(
+        "app:app",
+        host=args.host,
+        port=args.port,
+        workers=args.workers,
+        reload=args.dev,
+        log_level="debug" if args.dev else "info"
+    )
+
+if __name__ == "__main__":
+    main()
+```
+
+#### app.py 应用配置
+```python
+# backend/app.py
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pathlib import Path
+
+app = FastAPI(
+    title="AimiGuard API",
+    version="1.0.0",
+    docs_url="/api/docs" if DEBUG else None,  # 生产环境禁用文档
+    redoc_url=None,
+    openapi_url="/api/openapi.json" if DEBUG else None
+)
+
+# CORS 配置（开发环境）
+if DEBUG:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+# 注册 API 路由
+from api import auth, defense, scan, ai_chat
+app.include_router(auth.router, prefix="/api/v1", tags=["auth"])
+app.include_router(defense.router, prefix="/api/v1", tags=["defense"])
+app.include_router(scan.router, prefix="/api/v1", tags=["scan"])
+app.include_router(ai_chat.router, prefix="/api/v1", tags=["ai"])
+
+# 静态文件托管（生产模式）
+dist_path = Path(__file__).parent / "dist"
+if dist_path.exists():
+    # 托管静态资源
+    app.mount("/assets", StaticFiles(directory=str(dist_path / "assets")), name="assets")
+    
+    # SPA 路由支持（所有非 API 请求返回 index.html）
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # API 请求返回 404
+        if full_path.startswith("api/"):
+            return {"detail": "Not Found"}, 404
+        
+        # 其他请求返回 index.html（Vue Router 处理）
+        index_file = dist_path / "index.html"
+        if index_file.exists():
+            return FileResponse(index_file)
+        return {"detail": "Frontend not built"}, 404
+
+# 健康检查
+@app.get("/api/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "version": "1.0.0",
+        "mode": "development" if DEBUG else "production"
+    }
+```
+
+### 开发工作流
+
+#### 代码规范
+**后端（Python）**
+- 使用 Black 格式化：`black backend/`
+- 使用 Flake8 检查：`flake8 backend/`
+- 类型提示：使用 Pydantic 模型和类型注解
+
+**前端（Vue 3 + TypeScript）**
+- 使用 ESLint + Prettier
+- 组件命名：PascalCase（`DefenseDashboard.vue`）
+- 组合式 API（Composition API）优先
+
+#### Git 分支策略
+- `main`：生产分支，受保护
+- `dev`：开发主分支
+- `feature/*`：功能分支
+- `bugfix/*`：修复分支
+- `hotfix/*`：紧急修复
+
+#### 提交规范（Conventional Commits）
+```
+feat: 新增防御监控待办列表
+fix: 修复扫描任务状态机异常
+docs: 更新 API 文档
+refactor: 重构 AI 评分逻辑
+test: 增加审批接口单元测试
+chore: 更新依赖版本
+```
+
+### 数据库管理
+
+#### 迁移管理（Alembic）
+```powershell
+# 生成迁移脚本
+alembic revision --autogenerate -m "添加告警表"
+
+# 执行迁移
+alembic upgrade head
+
+# 回滚迁移
+alembic downgrade -1
+
+# 查看迁移历史
+alembic history
+```
+
+#### 数据库备份
+```powershell
+# 手动备份
+python scripts/backup_db.py
+
+# 恢复备份
+python scripts/restore_db.py --backup-file backups/backup_20260222.db
+```
+
+### 测试指南
+
+#### 后端测试
+```powershell
+# 运行所有测试
+pytest
+
+# 运行指定模块
+pytest tests/api/test_defense.py
+
+# 生成覆盖率报告
+pytest --cov=backend --cov-report=html
+
+# 查看覆盖率
+Start-Process htmlcov/index.html
+```
+
+#### 前端测试
+```powershell
+# 单元测试
+npm run test:unit
+
+# E2E 测试
+npm run test:e2e
+
+# 组件测试
+npm run test:component
+```
+
+#### 集成测试
+```powershell
+# 启动测试环境
+docker-compose -f docker-compose.test.yml up -d
+
+# 运行集成测试
+pytest tests/integration/
+
+# 清理测试环境
+docker-compose -f docker-compose.test.yml down
+```
+
+### 调试技巧
+
+#### 后端调试
+```python
+# 使用 pdb 断点
+import pdb; pdb.set_trace()
+
+# 使用日志
+import logging
+logger = logging.getLogger(__name__)
+logger.debug(f"trace_id={trace_id}, event={event}")
+```
+
+#### 前端调试
+- 使用 Vue DevTools 浏览器扩展
+- 使用 `console.log` 和 `debugger` 语句
+- 检查网络请求：浏览器开发者工具 Network 面板
+
+#### 常见问题排查
+1. **后端启动失败**
+   - 检查端口占用：`netstat -ano | findstr :8000`
+   - 检查数据库连接：确认 `DATABASE_URL` 配置正确
+   - 检查依赖版本：`pip list`
+
+2. **前端无法连接后端**
+   - 检查代理配置：`vite.config.ts` 中的 `proxy` 设置
+   - 检查 CORS 配置：后端 `main.py` 中的 CORS 中间件
+   - 检查网络请求：浏览器控制台 Network 面板
+
+3. **数据库迁移失败**
+   - 检查迁移脚本：`alembic/versions/`
+   - 手动回滚：`alembic downgrade -1`
+   - 重置数据库：删除 `aimiguard.db` 并重新初始化
+
+### API 开发规范
+
+#### 接口定义
+```python
+# backend/api/defense.py
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+
+router = APIRouter(prefix="/api/v1/defense", tags=["defense"])
+
+class ApproveRequest(BaseModel):
+    event_id: str
+    reason: str
+    trace_id: str
+
+@router.post("/{event_id}/approve")
+async def approve_event(
+    event_id: str,
+    request: ApproveRequest,
+    current_user: User = Depends(get_current_user)
+):
+    # 实现逻辑
+    pass
+```
+
+#### 错误处理
+```python
+from fastapi import HTTPException
+
+# 统一错误响应
+raise HTTPException(
+    status_code=403,
+    detail={
+        "code": 40301,
+        "message": "权限不足",
+        "trace_id": trace_id
+    }
+)
+```
+
+#### 审计记录
+```python
+from services.audit_service import write_audit
+
+# 关键操作必须记录审计
+await write_audit(
+    actor=current_user.id,
+    action="approve_event",
+    target=event_id,
+    result="success",
+    trace_id=trace_id
+)
+```
+
+### 前端开发规范
+
+#### 组件结构
+```vue
+<!-- frontend/src/views/DefenseDashboard.vue -->
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useDefenseStore } from '@/stores/defense'
+
+const defenseStore = useDefenseStore()
+const events = ref([])
+
+onMounted(async () => {
+  await defenseStore.fetchPendingEvents()
+  events.value = defenseStore.pendingEvents
+})
+</script>
+
+<template>
+  <div class="defense-dashboard">
+    <!-- 组件内容 -->
+  </div>
+</template>
+
+<style scoped>
+/* 组件样式 */
+</style>
+```
+
+#### 状态管理（Pinia）
+```typescript
+// frontend/src/stores/defense.ts
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+import type { ThreatEvent } from '@/types'
+
+export const useDefenseStore = defineStore('defense', () => {
+  const pendingEvents = ref<ThreatEvent[]>([])
+  
+  async function fetchPendingEvents() {
+    const response = await fetch('/api/v1/defense/events?status=PENDING')
+    pendingEvents.value = await response.json()
+  }
+  
+  return { pendingEvents, fetchPendingEvents }
+})
+```
+
+#### API 调用封装
+```typescript
+// frontend/src/api/defense.ts
+import { apiClient } from './client'
+
+export const defenseApi = {
+  async getPendingEvents() {
+    return apiClient.get('/defense/events', { params: { status: 'PENDING' } })
+  },
+  
+  async approveEvent(eventId: string, reason: string) {
+    return apiClient.post(`/defense/${eventId}/approve`, { reason })
+  }
+}
+```
+
+---
+
+## 部署文档（生产环境）
+
+### 部署架构
+
+#### 单进程架构（推荐）
+```
+[用户浏览器]
+    ↓
+[Python FastAPI 服务 - 单端口]
+    ├─ /          → 前端静态文件（Vue 构建产物）
+    ├─ /api/*     → 后端 API 接口
+    └─ SQLite 数据库
+```
+
+**特点**：
+- 单进程启动，简化部署
+- FastAPI 同时托管 API 和静态文件
+- Hash 路由模式（#/）无需服务端路由配置
+- 适合中小规模部署（< 1000 并发）
+
+**可选架构（高并发场景）**：
+如需支持更高并发，可在前面加 Nginx 反向代理：
+```
+[Nginx] → [FastAPI] → [SQLite]
+  ↓
+静态文件缓存 + Gzip 压缩
+```
+
+### 环境配置
+
+#### 生产环境变量（backend/.env.prod）
+```bash
+# 应用配置
+APP_ENV=production
+APP_VERSION=1.0.0
+DEBUG=false
+
+# 数据库
+DATABASE_URL=sqlite:////data/aimiguard.db
+
+# 安全配置
+JWT_SECRET=<生产环境强密钥-至少32字符>
+JWT_EXPIRE_MINUTES=60
+ENCRYPTION_KEY=<AES加密主密钥-32字节base64>
+
+# AI 模型
+LLM_PROVIDER=ollama
+LLM_BASE_URL=http://localhost:11434
+LLM_MODEL=qwen2.5:14b
+TTS_PROVIDER=coqui
+TTS_MODEL_PATH=/models/tts
+
+# MCP 配置
+MCP_MODE=stdio
+MCP_SERVER_NAME=switch-controller
+
+# 外部集成
+FIREWALL_API_URL=https://firewall.example.com/api
+FIREWALL_API_KEY=<防火墙API密钥>
+
+# 审计与日志
+AUDIT_ENABLED=true
+LOG_LEVEL=INFO
+LOG_FILE=/var/log/aimiguard/app.log
+
+# 性能配置
+MAX_WORKERS=4
+TASK_QUEUE_SIZE=100
+SCAN_CONCURRENCY=5
+```
+
+#### 前端环境变量（frontend/.env.production）
+```bash
+VITE_API_BASE_URL=/api
+VITE_APP_TITLE=AimiGuard 安全运营平台
+VITE_APP_VERSION=1.0.0
+```
+
+### 部署步骤
+
+#### 1. 服务器准备
+```powershell
+# 系统要求
+# - OS: Windows Server 2019+ / Ubuntu 20.04+
+# - CPU: 4核+
+# - RAM: 8GB+
+# - Disk: 100GB+ SSD
+
+# 安装依赖
+# Python 3.9+
+# Node.js 16+
+# Nginx
+# SQLite 3
+```
+
+#### 2. 后端部署
+```powershell
+# 创建部署目录
+mkdir C:\aimiguard
+cd C:\aimiguard
+
+# 克隆代码
+git clone <repository-url> .
+git checkout main
+
+# 后端构建
+cd backend
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# 配置生产环境
+Copy-Item .env.prod .env
+# 编辑 .env 填写生产配置
+
+# 初始化数据库
+python scripts/init_db.py --env production
+
+# 创建 Windows 服务（使用 NSSM）
+nssm install AimiGuardBackend "C:\aimiguard\backend\venv\Scripts\python.exe" "C:\aimiguard\backend\main.py"
+nssm set AimiGuardBackend AppDirectory "C:\aimiguard\backend"
+nssm set AimiGuardBackend AppEnvironmentExtra "APP_ENV=production"
+nssm start AimiGuardBackend
+```
+
+#### 3. 前端构建与集成
+```powershell
+# 构建前端
+cd ..\frontend
+npm install
+npm run build
+
+# 将构建产物复制到后端目录
+Copy-Item -Recurse dist\* ..\backend\dist\
+
+# 验证文件结构
+Get-ChildItem ..\backend\dist\
+# 应包含：index.html, assets/, favicon.ico 等
+```
+
+#### 4. 启动服务
+```powershell
+cd ..\backend
+
+# 方式一：直接启动（前台运行）
+python main.py --host 0.0.0.0 --port 8000 --workers 4
+
+# 方式二：Windows 服务（推荐）
+# 使用 NSSM 创建服务
+nssm install AimiGuard "C:\aimiguard\backend\venv\Scripts\python.exe" "C:\aimiguard\backend\main.py --host 0.0.0.0 --port 8000 --workers 4"
+nssm set AimiGuard AppDirectory "C:\aimiguard\backend"
+nssm set AimiGuard AppEnvironmentExtra "APP_ENV=production"
+nssm set AimiGuard DisplayName "AimiGuard 安全运营平台"
+nssm set AimiGuard Description "AI 驱动的安全运营与设备管理平台"
+nssm set AimiGuard Start SERVICE_AUTO_START
+nssm start AimiGuard
+
+# 查看服务状态
+nssm status AimiGuard
+Get-Service AimiGuard
+
+# 查看日志
+Get-Content C:\aimiguard\logs\app.log -Tail 50 -Wait
+```
+
+#### 5. 验证部署
+```powershell
+# 检查服务运行
+Invoke-WebRequest http://localhost:8000/api/health
+
+# 访问前端（浏览器）
+Start-Process http://localhost:8000
+
+# 检查进程
+Get-Process | Where-Object {$_.ProcessName -like "*python*"}
+
+# 检查端口监听
+netstat -ano | findstr :8000
+```
+
+#### 6. 可选：Nginx 反向代理（高并发场景）
+如需支持更高并发或添加 SSL，可在前面加 Nginx：
+
+```nginx
+```nginx
+# C:\nginx\conf\aimiguard.conf
+server {
+    listen 80;
+    server_name aimiguard.example.com;
+    
+    # 强制 HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name aimiguard.example.com;
+    
+    # SSL 证书
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    
+    # 前端静态文件
+    location / {
+        root C:/nginx/html/aimiguard;
+        try_files $uri $uri/ /index.html;
+        
+        # 缓存策略
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+    
+    # 后端 API 代理
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # 超时配置
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        
+        # WebSocket 支持（如需要）
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+    
+    # 安全头
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    
+    # 日志
+    access_log C:/nginx/logs/aimiguard_access.log;
+    error_log C:/nginx/logs/aimiguard_error.log;
+}
+```
+
+#### 5. 启动服务
+```powershell
+# 启动 Nginx
+Start-Service nginx
+
+# 验证后端服务
+Invoke-WebRequest http://localhost:8000/api/health
+
+# 验证前端访问
+Start-Process https://aimiguard.example.com
+```
+
+### 数据库管理
+
+#### 备份策略
+```powershell
+# 每日全量备份（计划任务）
+# 任务名称：AimiGuard-DailyBackup
+# 触发器：每天 02:00
+# 操作：运行脚本
+python C:\aimiguard\backend\scripts\backup_db.py --type full
+
+# 每小时增量备份
+# 任务名称：AimiGuard-HourlyBackup
+# 触发器：每小时
+# 操作：运行脚本
+python C:\aimiguard\backend\scripts\backup_db.py --type incremental
+```
+
+#### 备份保留策略
+- 全量备份：保留 30 天
+- 增量备份：保留 7 天
+- 归档备份：每月 1 日备份永久保留
+
+#### 恢复流程
+```powershell
+# 1. 停止服务
+Stop-Service AimiGuardBackend
+
+# 2. 恢复数据库
+python scripts/restore_db.py --backup-file backups/backup_20260222_full.db
+
+# 3. 验证一致性
+python scripts/verify_db.py
+
+# 4. 启动服务
+Start-Service AimiGuardBackend
+
+# 5. 验证功能
+Invoke-WebRequest http://localhost:8000/api/health
+```
+
+### 监控与告警
+
+#### 日志管理
+```powershell
+# 日志位置
+# 应用日志：C:\aimiguard\logs\app.log
+# 审计日志：C:\aimiguard\logs\audit.log
+# Nginx 日志：C:\nginx\logs\
+
+# 日志轮转（使用 logrotate 或 Windows 计划任务）
+# 每日轮转，保留 30 天
+```
+
+#### 健康检查
+```powershell
+# 后端健康检查
+Invoke-WebRequest http://localhost:8000/api/health
+
+# 数据库健康检查
+python scripts/check_db_health.py
+
+# 磁盘空间检查
+Get-PSDrive C | Select-Object Used,Free
+```
+
+#### 告警配置
+- 服务停止：立即告警
+- 磁盘空间 < 10GB：警告
+- 数据库备份失败：立即告警
+- API 错误率 > 5%：警告
+- 队列堆积 > 100：警告
+
+### 性能优化
+
+#### 数据库优化
+```sql
+-- 定期清理过期数据
+DELETE FROM threat_event WHERE created_at < datetime('now', '-90 days');
+
+-- 重建索引
+REINDEX;
+
+-- 分析查询性能
+EXPLAIN QUERY PLAN SELECT * FROM threat_event WHERE status='PENDING';
+
+-- 定期 VACUUM
+VACUUM;
+```
+
+#### 应用优化
+- 启用 Gzip 压缩（Nginx）
+- 配置静态资源缓存
+- 使用连接池（数据库）
+- 限制并发任务数
+- 启用 API 响应缓存
+
+### 安全加固
+
+#### 系统安全
+- 最小权限原则：应用使用专用账户运行
+- 防火墙规则：仅开放必要端口（80/443）
+- 定期更新：系统补丁和依赖包
+- 密钥管理：使用环境变量或密钥管理服务
+
+#### 应用安全
+- 强制 HTTPS
+- JWT Token 过期时间：1 小时
+- 密码策略：最少 8 位，包含大小写字母、数字、特殊字符
+- 登录失败锁定：5 次失败后锁定 15 分钟
+- 审计日志：所有高风险操作记录
+
+#### 数据安全
+- 数据库加密：敏感字段 AES-256 加密
+- 备份加密：备份文件加密存储
+- 传输加密：TLS 1.2+
+- 访问控制：RBAC 权限体系
+
+#### 访问控制与伪装（高级防护）
+
+**1. IP 白名单机制**
+
+多层防护策略：
+
+```nginx
+# Nginx 层白名单（第一道防线）
+# C:\nginx\conf\aimiguard.conf
+
+geo $whitelist {
+    default 0;
+    # 内网段
+    10.0.0.0/8 1;
+    172.16.0.0/12 1;
+    192.168.0.0/16 1;
+    # 办公网段
+    203.0.113.0/24 1;
+    # VPN 出口
+    198.51.100.10 1;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name aimiguard.example.com;
+    
+    # 白名单检查
+    if ($whitelist = 0) {
+        return 444;  # 直接断开连接，不返回任何响应
+    }
+    
+    # 或返回伪装页面
+    # if ($whitelist = 0) {
+    #     return 302 https://www.example.com;
+    # }
+    
+    # ... 其他配置
+}
+```
+
+应用层白名单（第二道防线）：
+
+```python
+# backend/middleware/ip_whitelist.py
+from fastapi import Request, HTTPException
+from typing import List
+import ipaddress
+
+class IPWhitelistMiddleware:
+    def __init__(self, app, whitelist: List[str]):
+        self.app = app
+        self.whitelist = [ipaddress.ip_network(ip) for ip in whitelist]
+    
+    async def __call__(self, request: Request, call_next):
+        client_ip = request.client.host
+        
+        # 检查 X-Forwarded-For（如果使用代理）
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            client_ip = forwarded.split(",")[0].strip()
+        
+        # 白名单检查
+        if not self._is_whitelisted(client_ip):
+            # 记录审计日志
+            await log_blocked_access(client_ip, request.url.path)
+            # 返回伪装响应或直接拒绝
+            raise HTTPException(status_code=404, detail="Not Found")
+        
+        return await call_next(request)
+    
+    def _is_whitelisted(self, ip: str) -> bool:
+        try:
+            client = ipaddress.ip_address(ip)
+            return any(client in network for network in self.whitelist)
+        except ValueError:
+            return False
+```
+
+数据库层白名单管理：
+
+```sql
+-- 白名单管理表
+CREATE TABLE ip_whitelist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip_range TEXT NOT NULL,              -- CIDR 格式：192.168.1.0/24
+    description TEXT,                     -- 说明：办公网/VPN/临时授权
+    whitelist_type TEXT DEFAULT 'permanent', -- permanent/temporary
+    expires_at DATETIME,                  -- 临时白名单过期时间
+    created_by TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_ip_whitelist_type ON ip_whitelist(whitelist_type);
+CREATE INDEX idx_ip_whitelist_expires ON ip_whitelist(expires_at);
+
+-- 访问审计表（记录所有被拒绝的访问）
+CREATE TABLE access_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_ip TEXT NOT NULL,
+    request_path TEXT,
+    request_method TEXT,
+    user_agent TEXT,
+    blocked_reason TEXT,                  -- not_in_whitelist/rate_limit/suspicious
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_access_audit_ip ON access_audit(client_ip);
+CREATE INDEX idx_access_audit_time ON access_audit(created_at);
+```
+
+动态白名单管理 API：
+
+```python
+# POST /api/v1/security/whitelist/add
+{
+    "ip_range": "203.0.113.0/24",
+    "description": "新办公区网段",
+    "whitelist_type": "permanent",
+    "trace_id": "req_abc123"
+}
+
+# POST /api/v1/security/whitelist/temp
+{
+    "ip_range": "198.51.100.50",
+    "description": "临时远程运维",
+    "expires_in_hours": 4,
+    "reason": "应急响应",
+    "trace_id": "req_def456"
+}
+
+# DELETE /api/v1/security/whitelist/{id}
+# 需要二次确认 + 审计记录
+```
+
+**2. 非入口阻断与隐蔽访问**
+
+端口敲门（Port Knocking）：
+
+```powershell
+# 使用 Windows Firewall 规则实现端口敲门
+# 默认关闭 443 端口，只有按顺序访问特定端口后才开放
+
+# 1. 创建默认拒绝规则
+New-NetFirewallRule -DisplayName "AimiGuard-Block-443" `
+    -Direction Inbound -LocalPort 443 -Protocol TCP -Action Block
+
+# 2. 使用脚本监听敲门序列
+# knock_sequence.ps1
+$knockSequence = @(7000, 8000, 9000)  # 敲门序列
+$knockWindow = 10  # 10秒内完成敲门
+
+# 监听敲门日志，匹配序列后临时开放 443
+# 实现逻辑：监听防火墙日志 -> 验证序列 -> 动态添加允许规则
+```
+
+单包授权（SPA - Single Packet Authorization）：
+
+```python
+# 使用加密的单包授权，比端口敲门更安全
+# 客户端发送加密的授权包，服务端验证后临时开放访问
+
+# backend/services/spa_service.py
+import hmac
+import hashlib
+import time
+
+def generate_spa_token(client_ip: str, secret: str) -> str:
+    """生成 SPA 授权令牌"""
+    timestamp = int(time.time())
+    message = f"{client_ip}:{timestamp}"
+    signature = hmac.new(
+        secret.encode(),
+        message.encode(),
+        hashlib.sha256
+    ).hexdigest()
+    return f"{message}:{signature}"
+
+def verify_spa_token(token: str, client_ip: str, secret: str) -> bool:
+    """验证 SPA 令牌并检查时效"""
+    try:
+        message, signature = token.rsplit(":", 1)
+        ip, timestamp = message.split(":")
+        
+        # 验证 IP
+        if ip != client_ip:
+            return False
+        
+        # 验证时效（5分钟内有效）
+        if time.time() - int(timestamp) > 300:
+            return False
+        
+        # 验证签名
+        expected = hmac.new(
+            secret.encode(),
+            message.encode(),
+            hashlib.sha256
+        ).hexdigest()
+        
+        return hmac.compare_digest(signature, expected)
+    except:
+        return False
+
+# 客户端使用示例
+# curl -H "X-SPA-Token: <token>" https://aimiguard.example.com/api/health
+```
+
+VPN/隧道强制入口：
+
+```nginx
+# 仅允许通过 VPN 访问
+# 检查客户端证书或特定请求头
+
+server {
+    listen 443 ssl http2;
+    server_name aimiguard.example.com;
+    
+    # 要求客户端证书
+    ssl_client_certificate /path/to/ca.crt;
+    ssl_verify_client on;
+    
+    # 或检查 VPN 网关添加的特定头
+    if ($http_x_vpn_gateway != "internal-vpn-gateway") {
+        return 444;
+    }
+    
+    # ... 其他配置
+}
+```
+
+**3. 伪装与反侦察措施**
+
+隐藏技术栈信息：
+
+```nginx
+# Nginx 配置
+server {
+    # 隐藏 Nginx 版本
+    server_tokens off;
+    
+    # 伪装 Server 头
+    more_set_headers "Server: Apache/2.4.41";
+    
+    # 移除 X-Powered-By
+    more_clear_headers "X-Powered-By";
+    
+    # 自定义错误页面（不暴露框架）
+    error_page 404 /404.html;
+    error_page 500 502 503 504 /50x.html;
+    
+    location = /404.html {
+        root /usr/share/nginx/html;
+        internal;
+    }
+}
+```
+
+```python
+# FastAPI 配置
+from fastapi import FastAPI
+
+app = FastAPI(
+    # 禁用自动文档（生产环境）
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+    # 自定义响应头
+    default_response_class=CustomResponse
+)
+
+class CustomResponse(JSONResponse):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 移除框架特征
+        self.headers.pop("X-FastAPI-Version", None)
+        # 伪装为其他框架
+        self.headers["X-Powered-By"] = "Express"
+```
+
+蜜罐端点（诱捕攻击者）：
+
+```python
+# 假的管理后台登录页面
+@app.get("/admin/login")
+async def fake_admin_login(request: Request):
+    """伪装的管理后台，记录所有访问者"""
+    client_ip = request.client.host
+    
+    # 记录可疑访问
+    await log_suspicious_access(
+        ip=client_ip,
+        path="/admin/login",
+        reason="访问不存在的管理后台"
+    )
+    
+    # 返回逼真的假登录页面
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html>
+    <head><title>Admin Login</title></head>
+    <body>
+        <form action="/admin/auth" method="post">
+            <input type="text" name="username" placeholder="Username">
+            <input type="password" name="password" placeholder="Password">
+            <button type="submit">Login</button>
+        </form>
+    </body>
+    </html>
+    """)
+
+@app.post("/admin/auth")
+async def fake_admin_auth(request: Request):
+    """记录攻击者尝试的凭据"""
+    form = await request.form()
+    client_ip = request.client.host
+    
+    # 记录尝试的凭据
+    await log_attack_attempt(
+        ip=client_ip,
+        username=form.get("username"),
+        password_hash=hashlib.sha256(form.get("password").encode()).hexdigest()
+    )
+    
+    # 延迟响应（浪费攻击者时间）
+    await asyncio.sleep(3)
+    
+    # 返回假的错误信息
+    return {"error": "Invalid credentials"}
+
+# 假的 API 端点
+@app.get("/api/v1/users/list")
+async def fake_api_endpoint(request: Request):
+    """假的敏感 API，诱捕扫描器"""
+    await log_suspicious_access(
+        ip=request.client.host,
+        path="/api/v1/users/list",
+        reason="访问不存在的敏感 API"
+    )
+    
+    # 返回假数据
+    return {
+        "users": [
+            {"id": 1, "username": "admin", "role": "admin"},
+            {"id": 2, "username": "test", "role": "user"}
+        ]
+    }
+```
+
+响应延迟与速率限制（防自动化扫描）：
+
+```python
+# 对可疑请求添加延迟
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# 登录接口严格限流
+@app.post("/api/v1/auth/login")
+@limiter.limit("5/minute")  # 每分钟最多 5 次
+async def login(request: Request):
+    # 登录逻辑
+    pass
+
+# 对频繁失败的 IP 增加延迟
+async def adaptive_delay(client_ip: str):
+    """根据失败次数动态增加延迟"""
+    fail_count = await get_recent_fail_count(client_ip, minutes=10)
+    
+    if fail_count > 10:
+        await asyncio.sleep(10)  # 10秒延迟
+    elif fail_count > 5:
+        await asyncio.sleep(5)   # 5秒延迟
+    elif fail_count > 3:
+        await asyncio.sleep(2)   # 2秒延迟
+```
+
+端口伪装（让扫描器误判）：
+
+```nginx
+# 在非标准端口运行服务
+# 443 端口返回假的 Apache 欢迎页
+# 实际服务运行在 8443 或其他端口
+
+server {
+    listen 443 ssl http2;
+    server_name aimiguard.example.com;
+    
+    # 返回假的 Apache 默认页面
+    location / {
+        return 200 "<!DOCTYPE html><html><head><title>Apache2 Ubuntu Default Page</title></head><body><h1>It works!</h1></body></html>";
+        add_header Content-Type text/html;
+    }
+}
+
+server {
+    listen 8443 ssl http2;
+    server_name aimiguard.example.com;
+    
+    # 真实服务（需要知道端口才能访问）
+    # ... 实际配置
+}
+```
+
+**4. 综合防护策略建议**
+
+生产环境推荐配置：
+
+```yaml
+# 安全配置清单
+security:
+  # 第一层：网络层
+  - 仅开放 443 端口
+  - 使用非标准端口（如 8443）
+  - 配置 IP 白名单（Nginx geo 模块）
+  
+  # 第二层：应用层
+  - IP 白名单中间件
+  - JWT 短期 Token（1小时）
+  - 登录失败锁定（5次/15分钟）
+  - API 速率限制（100次/分钟）
+  
+  # 第三层：伪装层
+  - 隐藏技术栈信息
+  - 自定义错误页面
+  - 部署蜜罐端点
+  - 响应延迟（可疑请求）
+  
+  # 第四层：监控层
+  - 记录所有被拒绝的访问
+  - 异常 IP 自动加入黑名单
+  - 攻击行为实时告警
+  - 定期审查访问日志
+```
+
+实施优先级：
+
+1. **P0（必须）**：IP 白名单 + HTTPS + JWT 认证
+2. **P1（推荐）**：隐藏技术栈 + 速率限制 + 访问审计
+3. **P2（增强）**：蜜罐端点 + 响应延迟 + 端口伪装
+4. **P3（高级）**：端口敲门 / SPA + VPN 强制入口
+
+**5. 配置示例（完整）**
+
+```bash
+# .env.prod 增加安全配置
+# IP 白名单
+IP_WHITELIST=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,203.0.113.0/24
+IP_WHITELIST_ENABLED=true
+
+# 伪装配置
+HIDE_TECH_STACK=true
+FAKE_SERVER_HEADER=Apache/2.4.41
+HONEYPOT_ENABLED=true
+
+# 速率限制
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_PER_MINUTE=100
+LOGIN_RATE_LIMIT=5
+
+# 访问控制
+REQUIRE_CLIENT_CERT=false
+VPN_ONLY_MODE=false
+PORT_KNOCKING_ENABLED=false
+
+# 审计
+LOG_BLOCKED_ACCESS=true
+AUTO_BLACKLIST_THRESHOLD=10  # 10次失败后自动加入黑名单
+```
+
+这些措施可以有效防止：
+- 未授权访问
+- 自动化扫描
+- 暴力破解
+- 信息泄露
+- DDoS 攻击
+- 0day 探测
+
+### 故障恢复
+
+#### 常见故障处理
+
+**1. 后端服务无响应**
+```powershell
+# 检查服务状态
+Get-Service AimiGuardBackend
+
+# 查看日志
+Get-Content C:\aimiguard\logs\app.log -Tail 100
+
+# 重启服务
+Restart-Service AimiGuardBackend
+```
+
+**2. 数据库损坏**
+```powershell
+# 检查数据库完整性
+sqlite3 aimiguard.db "PRAGMA integrity_check;"
+
+# 如果损坏，从备份恢复
+python scripts/restore_db.py --backup-file backups/latest.db
+```
+
+**3. 磁盘空间不足**
+```powershell
+# 清理日志
+Remove-Item C:\aimiguard\logs\*.log.old
+
+# 清理过期备份
+python scripts/cleanup_old_backups.py --days 30
+
+# 归档历史数据
+python scripts/archive_old_data.py --days 90
+```
+
+**4. 性能下降**
+```powershell
+# 检查数据库大小
+Get-Item C:\aimiguard\data\aimiguard.db | Select-Object Length
+
+# 优化数据库
+python scripts/optimize_db.py
+
+# 检查队列堆积
+python scripts/check_queue_depth.py
+```
+
+### 升级流程
+
+#### 版本升级步骤
+```powershell
+# 1. 备份当前版本
+python scripts/backup_db.py --type full
+git tag backup-$(Get-Date -Format "yyyyMMdd-HHmmss")
+
+# 2. 拉取新版本
+git fetch origin
+git checkout v1.1.0
+
+# 3. 更新后端
+cd backend
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt --upgrade
+
+# 4. 执行数据库迁移
+alembic upgrade head
+
+# 5. 更新前端
+cd ..\frontend
+npm install
+npm run build
+Copy-Item -Recurse dist\* C:\nginx\html\aimiguard\ -Force
+
+# 6. 重启服务
+Restart-Service AimiGuardBackend
+Restart-Service nginx
+
+# 7. 验证升级
+Invoke-WebRequest http://localhost:8000/api/system/version
+```
+
+#### 回滚流程
+```powershell
+# 1. 停止服务
+Stop-Service AimiGuardBackend
+
+# 2. 回滚代码
+git checkout <previous-version-tag>
+
+# 3. 回滚数据库
+alembic downgrade <previous-revision>
+
+# 4. 恢复备份（如需要）
+python scripts/restore_db.py --backup-file backups/backup_before_upgrade.db
+
+# 5. 重启服务
+Start-Service AimiGuardBackend
+
+# 6. 验证回滚
+Invoke-WebRequest http://localhost:8000/api/health
+```
+
+### 运维检查清单
+
+#### 每日检查
+- [ ] 服务运行状态
+- [ ] 磁盘空间使用率
+- [ ] 备份任务执行状态
+- [ ] 错误日志审查
+- [ ] 待办队列堆积情况
+
+#### 每周检查
+- [ ] 数据库性能分析
+- [ ] 安全日志审查
+- [ ] 系统资源使用趋势
+- [ ] 备份恢复演练
+- [ ] 依赖包安全扫描
+
+#### 每月检查
+- [ ] 系统补丁更新
+- [ ] 证书有效期检查
+- [ ] 历史数据归档
+- [ ] 容量规划评估
+- [ ] 灾备演练
+
+### 联系与支持
+
+**技术支持**
+- 文档：https://docs.aimiguard.com
+- 问题反馈：https://github.com/aimiguard/issues
+- 邮件支持：support@aimiguard.com
+
+**紧急联系**
+- 值班电话：<待补充>
+- 应急响应：<待补充>
