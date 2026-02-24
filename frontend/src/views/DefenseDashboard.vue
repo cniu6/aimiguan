@@ -1,60 +1,68 @@
 <template>
-  <div class="p-6 max-w-[1400px] mx-auto space-y-8">
+  <div class="p-6 max-w-[1400px] mx-auto space-y-6">
     <!-- Header -->
-    <div>
-      <h1 class="text-2xl font-semibold text-foreground">防御监控</h1>
-      <p class="text-sm text-muted-foreground mt-1">实时威胁事件处置</p>
+    <div class="space-y-1">
+      <h1 class="text-3xl font-bold tracking-tight text-foreground">防御监控</h1>
+      <p class="text-muted-foreground">实时威胁事件处置</p>
     </div>
 
     <!-- Stats -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="grid gap-4 md:grid-cols-3">
       <Card v-for="stat in stats" :key="stat.label">
-        <CardContent class="pt-0">
-          <p class="text-sm text-muted-foreground">{{ stat.label }}</p>
-          <p class="text-3xl font-semibold text-foreground mt-1">{{ stat.value }}</p>
+        <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle class="text-sm font-medium">{{ stat.label }}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div class="text-2xl font-bold">{{ stat.value }}</div>
         </CardContent>
       </Card>
     </div>
 
     <!-- Events -->
     <div class="space-y-4">
-      <h2 class="text-lg font-semibold text-foreground">待处置事件</h2>
+      <div class="flex items-center justify-between">
+        <h2 class="text-xl font-semibold tracking-tight">待处置事件</h2>
+      </div>
 
       <!-- Loading skeleton -->
-      <div v-if="loading" class="space-y-4">
-        <Skeleton v-for="i in 3" :key="i" class="h-32 w-full" />
+      <div v-if="loading" class="space-y-3">
+        <Skeleton v-for="i in 3" :key="i" class="h-[140px] w-full rounded-lg" />
       </div>
 
       <!-- Empty -->
-      <Card v-else-if="events.length === 0">
-        <CardContent class="py-10 text-center text-muted-foreground">
-          <ShieldCheck class="size-10 mx-auto mb-3 opacity-30" />
-          暂无待处置事件
+      <Card v-else-if="events.length === 0" class="border-dashed">
+        <CardContent class="flex flex-col items-center justify-center py-12">
+          <ShieldCheck class="size-12 text-muted-foreground/40 mb-4" />
+          <p class="text-sm text-muted-foreground">暂无待处置事件</p>
         </CardContent>
       </Card>
 
       <!-- Event list -->
-      <Card v-for="event in events" :key="event.id" v-else>
-        <CardContent class="pt-0 space-y-3">
-          <div class="flex items-center justify-between">
-            <span class="font-semibold text-foreground font-mono">{{ event.ip }}</span>
-            <Badge :variant="getScoreVariant(event.ai_score)" :class="getScoreColor(event.ai_score)">
-              {{ event.ai_score }} 分
-            </Badge>
-          </div>
-          <p class="text-sm text-muted-foreground">{{ event.ai_reason }}</p>
-          <p class="text-xs text-muted-foreground/60">来源: {{ event.source }}</p>
-          <div class="flex gap-3 pt-1">
-            <Button size="sm" class="cursor-pointer" @click="approveEvent(event.id)">
-              <ShieldCheck class="size-4" />
-              批准封禁
-            </Button>
-            <Button variant="outline" size="sm" class="cursor-pointer" @click="rejectEvent(event.id)">
-              驳回
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div v-else class="space-y-3">
+        <Card v-for="event in events" :key="event.id" class="overflow-hidden transition-colors hover:bg-accent/50">
+          <CardHeader class="pb-3">
+            <div class="flex items-center justify-between">
+              <code class="text-sm font-semibold">{{ event.ip }}</code>
+              <Badge :variant="getScoreVariant(event.ai_score)" :class="getScoreColor(event.ai_score)">
+                {{ event.ai_score }} 分
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent class="space-y-3">
+            <p class="text-sm text-muted-foreground leading-relaxed">{{ event.ai_reason }}</p>
+            <p class="text-xs text-muted-foreground">来源: {{ event.source }}</p>
+            <div class="flex gap-2 pt-2">
+              <Button size="sm" class="cursor-pointer gap-2" @click="approveEvent(event.id)">
+                <ShieldCheck class="size-4" />
+                批准封禁
+              </Button>
+              <Button variant="outline" size="sm" class="cursor-pointer" @click="rejectEvent(event.id)">
+                驳回
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   </div>
 </template>
@@ -62,7 +70,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { defenseApi } from '@/api/defense'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'

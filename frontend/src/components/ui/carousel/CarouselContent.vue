@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { VNodeRef } from 'vue'
 import type { WithClassAsProps } from "./interface"
 import { cn } from "@/lib/utils"
 import { useCarousel } from "./useCarousel"
@@ -10,11 +11,14 @@ defineOptions({
 const props = defineProps<WithClassAsProps>()
 
 const { carouselRef, orientation } = useCarousel()
+const carouselVNodeRef: VNodeRef = (element) => {
+  carouselRef.value = element as HTMLElement | undefined
+}
 </script>
 
 <template>
   <div
-    ref="carouselRef"
+    :ref="carouselVNodeRef"
     data-slot="carousel-content"
     class="overflow-hidden"
   >

@@ -1,11 +1,21 @@
 import { apiClient } from './client'
 
+interface ThreatEvent {
+  id: number
+  ip: string
+  source: string
+  ai_score: number
+  ai_reason: string
+  status: string
+  created_at: string
+}
+
 export const defenseApi = {
-  async getPendingEvents() {
+  async getPendingEvents(): Promise<ThreatEvent[]> {
     return apiClient.get('/defense/events', { params: { status: 'PENDING' } })
   },
 
-  async getEvents(status?: string) {
+  async getEvents(status?: string): Promise<ThreatEvent[]> {
     return apiClient.get('/defense/events', { params: { status } })
   },
 

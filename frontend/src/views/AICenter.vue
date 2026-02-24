@@ -1,9 +1,9 @@
 <template>
-  <div class="p-6 max-w-[1400px] mx-auto space-y-8">
+  <div class="p-6 max-w-[1400px] mx-auto space-y-6">
     <!-- Header -->
-    <div>
-      <h1 class="text-2xl font-semibold text-foreground">AI 中枢</h1>
-      <p class="text-sm text-muted-foreground mt-1">智能对话与分析</p>
+    <div class="space-y-1">
+      <h1 class="text-3xl font-bold tracking-tight text-foreground">AI 中枢</h1>
+      <p class="text-muted-foreground">智能对话与分析</p>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6">
@@ -44,7 +44,7 @@
               placeholder="输入消息，如：分析 IP 1.2.3.4 ..."
               class="flex-1"
             />
-            <Button type="submit" class="cursor-pointer" :disabled="!inputMessage.trim()">
+            <Button type="submit" class="cursor-pointer gap-2" :disabled="!inputMessage.trim()">
               <Send class="size-4" />
               发送
             </Button>
@@ -58,12 +58,12 @@
           <CardTitle class="text-base">AI 报告</CardTitle>
         </CardHeader>
         <CardContent class="space-y-4 pt-0">
-          <div class="flex gap-3">
-            <Button variant="outline" size="sm" class="cursor-pointer" @click="generateReport('daily')">
+          <div class="flex gap-2">
+            <Button variant="outline" size="sm" class="cursor-pointer gap-2" @click="generateReport('daily')">
               <FileText class="size-4" />
               生成日报
             </Button>
-            <Button variant="outline" size="sm" class="cursor-pointer" @click="generateReport('weekly')">
+            <Button variant="outline" size="sm" class="cursor-pointer gap-2" @click="generateReport('weekly')">
               <FileText class="size-4" />
               生成周报
             </Button>

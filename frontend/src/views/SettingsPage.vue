@@ -6,7 +6,7 @@
         <p class="mt-1 text-sm text-muted-foreground">系统级配置与管理入口</p>
       </div>
 
-      <div class="grid gap-4 md:grid-cols-2">
+      <div class="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader><CardTitle class="text-base">模式与策略</CardTitle></CardHeader>
           <CardContent class="text-sm text-muted-foreground">主动/被动策略、阈值、默认动作配置</CardContent>

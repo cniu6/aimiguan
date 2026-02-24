@@ -1,11 +1,14 @@
 <template>
-  <div class="p-6 max-w-[1400px] mx-auto space-y-8">
+  <div class="p-6 max-w-[1400px] mx-auto space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-semibold text-foreground">扫描管理</h1>
+      <div class="space-y-1">
+        <h1 class="text-3xl font-bold tracking-tight text-foreground">扫描管理</h1>
+        <p class="text-muted-foreground">创建和管理扫描任务</p>
+      </div>
       <Dialog v-model:open="showCreateModal">
         <DialogTrigger as-child>
-          <Button class="cursor-pointer">
+          <Button class="cursor-pointer gap-2">
             <Plus class="size-4" />
             新建扫描
           </Button>
@@ -42,31 +45,33 @@
 
     <!-- Tasks -->
     <div class="space-y-4">
-      <h2 class="text-lg font-semibold text-foreground">扫描任务</h2>
+      <h2 class="text-xl font-semibold tracking-tight">扫描任务</h2>
 
-      <div v-if="loading" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Skeleton v-for="i in 3" :key="i" class="h-36 w-full" />
+      <div v-if="loading" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Skeleton v-for="i in 3" :key="i" class="h-[160px] w-full rounded-lg" />
       </div>
 
-      <Card v-else-if="tasks.length === 0">
-        <CardContent class="py-10 text-center text-muted-foreground">
-          <Search class="size-10 mx-auto mb-3 opacity-30" />
-          暂无扫描任务
+      <Card v-else-if="tasks.length === 0" class="border-dashed">
+        <CardContent class="flex flex-col items-center justify-center py-12">
+          <Search class="size-12 text-muted-foreground/40 mb-4" />
+          <p class="text-sm text-muted-foreground">暂无扫描任务</p>
         </CardContent>
       </Card>
 
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Card v-for="task in tasks" :key="task.id">
-          <CardContent class="pt-0 space-y-3">
+      <div v-else class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card v-for="task in tasks" :key="task.id" class="overflow-hidden transition-colors hover:bg-accent/50">
+          <CardHeader class="pb-3">
             <div class="flex items-center justify-between">
-              <span class="font-semibold text-foreground font-mono">{{ task.target }}</span>
+              <code class="text-sm font-semibold">{{ task.target }}</code>
               <Badge :variant="getStateVariant(task.state)" :class="getStateColor(task.state)">
                 {{ task.state }}
               </Badge>
             </div>
+          </CardHeader>
+          <CardContent class="space-y-3">
             <p class="text-sm text-muted-foreground">工具: {{ task.tool_name }}</p>
-            <p class="text-xs text-muted-foreground/60">{{ formatTime(task.created_at) }}</p>
-            <Button variant="outline" size="sm" class="cursor-pointer" @click="viewTask(task.id)">
+            <p class="text-xs text-muted-foreground">{{ formatTime(task.created_at) }}</p>
+            <Button variant="outline" size="sm" class="w-full cursor-pointer gap-2" @click="viewTask(task.id)">
               <Eye class="size-4" />
               查看详情
             </Button>
@@ -80,7 +85,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { scanApi } from '@/api/scan'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'

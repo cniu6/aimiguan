@@ -1,0 +1,93 @@
+/* fade-slide - 页面切换动画（固定使用） */
+.route-page {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.36s ease, transform 0.36s ease;
+  will-change: opacity, transform;
+}
+
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translate3d(-20px, 0, 0);
+}
+
+.fade-slide-enter-to {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.fade-slide-leave-from {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translate3d(20px, 0, 0);
+}
+
+/* 路由内容加载联动 */
+.content-loading {
+  opacity: 0.9;
+  transform: none;
+  filter: saturate(0.92);
+}
+
+.content-ready {
+  opacity: 1;
+  transform: none;
+  filter: saturate(1);
+}
+
+.route-content-overlay {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--background) 86%, transparent) 0%,
+    color-mix(in srgb, var(--background) 74%, transparent) 100%
+  );
+  transition: opacity 0.22s ease;
+}
+
+/* 路由进度条 */
+.route-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #FFFFFF;
+  transform-origin: left;
+  z-index: 50;
+  transition: transform 0.2s ease;
+}
+
+.route-progress-enter-active {
+  animation: progress-start 0.3s ease;
+}
+
+.route-progress-leave-active {
+  animation: progress-end 0.2s ease;
+}
+
+@keyframes progress-start {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(0.3);
+  }
+}
+
+@keyframes progress-end {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}

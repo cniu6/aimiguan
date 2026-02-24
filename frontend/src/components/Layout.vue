@@ -1,24 +1,27 @@
 <template>
+  <Transition name="route-progress">
+    <div v-if="isRouteChanging" class="route-progress" :style="{ transform: `scaleX(${routeProgress})` }" />
+  </Transition>
   <div ref="shellRef" class="flex h-screen flex-col bg-background text-foreground">
-    <header class="border-b border-border bg-card/95 backdrop-blur">
-      <div class="flex h-16 items-center justify-between px-4 sm:px-6">
-        <div class="flex items-center gap-3 sm:gap-6">
+    <header class="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div class="flex h-14 items-center px-4 sm:px-6">
+        <div class="flex items-center gap-3">
           <Sheet>
             <SheetTrigger as-child>
-              <Button variant="ghost" size="icon" class="md:hidden">
+              <Button variant="ghost" size="icon" class="cursor-pointer md:hidden">
                 <PanelLeft class="size-4" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" class="border-r border-border p-0">
-              <div class="border-b border-border px-4 py-3">
-                <p class="text-sm font-medium text-foreground">{{ activeModeLabel }}</p>
+            <SheetContent side="left" class="w-[18rem] border-r border-border bg-sidebar p-0">
+              <div class="border-b border-sidebar-border px-4 py-3">
+                <p class="text-sm font-medium text-sidebar-foreground">{{ activeModeLabel }}</p>
               </div>
               <nav class="space-y-1 p-3">
                 <router-link
                   v-for="item in currentSidebarItems"
-                  :key="`mobile-${item.to}`"
+                  :key="item.to"
                   :to="item.to"
-                  class="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground transition-[transform,opacity] duration-200 hover:translate-x-0.5 hover:bg-sidebar-accent"
+                  class="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground transition-colors duration-200 hover:bg-sidebar-accent cursor-pointer"
                   active-class="bg-sidebar-accent text-sidebar-accent-foreground"
                 >
                   <component :is="item.icon" class="size-4" />
@@ -30,35 +33,48 @@
 
           <div class="flex items-center gap-2">
             <ShieldCheck class="size-5 text-primary" />
-            <span class="text-base font-semibold tracking-wide">AimiGuard</span>
+            <span class="hidden text-sm font-semibold tracking-tight text-foreground sm:inline">AI 蜜罐</span>
           </div>
+        </div>
+
+        <div class="flex flex-1 justify-center">
           <Tabs
             :model-value="activeMode"
             class="hidden md:flex"
             @update:model-value="onModeChange"
           >
-            <TabsList class="h-9 bg-muted/60">
-              <TabsTrigger value="defense" class="px-3 text-xs sm:text-sm">防御坚守</TabsTrigger>
-              <TabsTrigger value="probe" class="px-3 text-xs sm:text-sm">主动探测</TabsTrigger>
+            <TabsList class="h-9 bg-muted">
+              <TabsTrigger value="defense" class="cursor-pointer px-3 text-xs sm:text-sm">防御坚守</TabsTrigger>
+              <TabsTrigger value="probe" class="cursor-pointer px-3 text-xs sm:text-sm">主动探测</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
 
-        <div class="flex items-center gap-2 sm:gap-3">
+        <div class="flex items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
-            class="text-muted-foreground"
+            class="cursor-pointer text-muted-foreground"
             @click="goToSettings"
           >
             <Settings class="size-4" />
           </Button>
 
+          <Button
+            variant="ghost"
+            size="icon"
+            class="cursor-pointer text-muted-foreground"
+            @click="toggleTheme"
+          >
+            <Moon v-if="isDarkMode" class="size-4" />
+            <Sun v-else class="size-4" />
+          </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger as-child>
-              <Button variant="ghost" size="icon" class="relative text-muted-foreground">
+              <Button variant="ghost" size="icon" class="relative cursor-pointer text-muted-foreground">
                 <Avatar class="size-8">
-                  <AvatarFallback class="bg-primary/15 text-xs text-primary">
+                  <AvatarFallback class="bg-primary/10 text-xs text-primary">
                     {{ username.charAt(0).toUpperCase() }}
                   </AvatarFallback>
                 </Avatar>
@@ -90,68 +106,123 @@
         </div>
       </div>
 
-      <div class="border-t border-border/60 px-4 py-2 md:hidden">
+      <div class="border-t border-border px-4 py-2 md:hidden">
         <Tabs :model-value="activeMode" @update:model-value="onModeChange">
-          <TabsList class="grid w-full grid-cols-2 bg-muted/60">
-            <TabsTrigger value="defense">防御坚守</TabsTrigger>
-            <TabsTrigger value="probe">主动探测</TabsTrigger>
+          <TabsList class="grid w-full grid-cols-2 bg-muted">
+            <TabsTrigger value="defense" class="cursor-pointer">防御坚守</TabsTrigger>
+            <TabsTrigger value="probe" class="cursor-pointer">主动探测</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
     </header>
 
     <div class="relative flex min-h-0 flex-1 overflow-hidden">
-      <div ref="maskWrapRef" class="pointer-events-none absolute inset-0 z-30 hidden overflow-hidden">
-        <div ref="impactPulseRef" class="absolute top-1/2 left-1/2 size-56 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary/50 opacity-0" />
+      <div ref="maskWrapRef" class="pointer-events-none fixed inset-0 z-[100] hidden flex w-full h-full">
+        <div ref="impactPulseRef" class="absolute top-1/2 left-1/2 size-20 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-primary opacity-0" />
         <div
           v-for="panelIndex in maskPanels"
           :key="`mask-panel-${panelIndex}`"
           :ref="setMaskPanelRef"
-          class="absolute top-0 h-full"
-          :style="{
-            left: `${panelIndex * 12.5}%`,
-            width: '12.5%',
-            background: panelIndex % 2 === 0
-              ? 'linear-gradient(180deg, rgba(3,8,14,0.98) 0%, rgba(8,19,36,0.9) 62%, rgba(20,54,112,0.78) 100%)'
-              : 'linear-gradient(180deg, rgba(2,6,12,0.95) 0%, rgba(7,15,28,0.86) 60%, rgba(16,41,95,0.74) 100%)',
-          }"
+          class="h-full flex-1 bg-background border-r border-border/50 last:border-r-0 origin-top"
         />
-        <div ref="inkTopRef" class="absolute top-[12%] left-0 h-px w-full bg-primary/50 opacity-0" />
-        <div ref="inkBottomRef" class="absolute bottom-[12%] left-0 h-px w-full bg-primary/50 opacity-0" />
+        <div ref="inkTopRef" class="absolute top-[30%] left-0 h-0.5 w-full bg-primary shadow-[0_0_15px_var(--primary)] opacity-0" />
+        <div ref="inkBottomRef" class="absolute bottom-[30%] left-0 h-0.5 w-full bg-primary shadow-[0_0_15px_var(--primary)] opacity-0" />
+        <div 
+          ref="transitionTitleRef" 
+          class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-6xl md:text-8xl font-black tracking-[0.5em] text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/10 opacity-0 whitespace-nowrap z-50 select-none pointer-events-none"
+          style="text-shadow: 0 0 40px var(--primary);"
+        >
+          {{ transitionTitleText }}
+        </div>
       </div>
 
       <aside
         ref="sidebarRef"
-        class="hidden w-60 shrink-0 border-r border-border bg-sidebar px-3 py-4 md:block"
+        class="relative hidden shrink-0 border-r border-sidebar-border bg-sidebar transition-[width,padding] duration-300 ease-out md:flex md:flex-col"
+        :class="sidebarCollapsed ? 'px-2 py-3' : 'p-3'"
+        :style="{ width: `${sidebarCurrentWidth}px` }"
       >
-        <p class="mb-3 px-2 text-xs font-medium tracking-wide text-muted-foreground">{{ activeModeLabel }}</p>
-        <nav class="space-y-1">
+        <div
+          class="mb-3 rounded-md border border-sidebar-border/80 bg-sidebar-accent/40 transition-all duration-200"
+          :class="sidebarCollapsed ? 'px-2 py-2 text-center' : 'px-3 py-2'"
+        >
+          <p class="font-medium tracking-wide text-sidebar-foreground/90" :class="sidebarCollapsed ? 'text-[11px]' : 'text-xs'">
+            {{ sidebarCollapsed ? (activeMode === 'defense' ? '防御' : '探测') : activeModeLabel }}
+          </p>
+        </div>
+
+        <nav class="flex-1 space-y-1 overflow-hidden">
           <router-link
             v-for="item in currentSidebarItems"
             :key="item.to"
             :to="item.to"
             data-sidebar-item="true"
-            class="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground transition-[transform,opacity] duration-200 hover:translate-x-0.5 hover:bg-sidebar-accent"
+            :title="sidebarCollapsed ? item.label : undefined"
+            class="flex items-center rounded-md py-2 text-sm text-sidebar-foreground transition-colors duration-200 hover:bg-sidebar-accent cursor-pointer"
+            :class="sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-3'"
             active-class="bg-sidebar-accent text-sidebar-accent-foreground"
           >
             <component :is="item.icon" class="size-4" />
-            <span>{{ item.label }}</span>
+            <span v-if="!sidebarCollapsed">{{ item.label }}</span>
           </router-link>
         </nav>
+
+        <div class="mt-2 border-t border-sidebar-border/70 pt-2">
+          <button
+            type="button"
+            class="flex h-11 w-full items-center rounded-md text-sidebar-foreground transition-colors duration-200 hover:bg-sidebar-accent focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
+            :class="sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-3'"
+            :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+            @click="toggleSidebarCollapsed"
+          >
+            <ChevronRight v-if="sidebarCollapsed" class="size-4" />
+            <ChevronLeft v-else class="size-4" />
+            <span v-if="!sidebarCollapsed" class="text-sm">收起侧边栏</span>
+          </button>
+        </div>
+
+        <div
+          class="absolute top-0 -right-1 z-20 h-full w-2 cursor-col-resize"
+          role="separator"
+          aria-orientation="vertical"
+          @mousedown="startSidebarResize"
+        >
+          <div
+            class="mx-auto h-full w-px bg-transparent transition-colors duration-200 hover:bg-border"
+            :class="isSidebarResizing ? 'bg-primary/60' : ''"
+          />
+        </div>
       </aside>
 
       <main
         ref="contentRef"
-        class="min-w-0 flex-1 overflow-y-auto"
+        class="min-w-0 flex-1 overflow-y-auto bg-background"
       >
-        <router-view />
+        <div
+          class="relative h-full transition-[opacity,transform,filter] duration-300 ease-out"
+          :class="isRouteChanging ? 'content-loading' : 'content-ready'"
+        >
+          <div
+            v-if="isRouteChanging"
+            class="pointer-events-none absolute inset-0 z-20 route-content-overlay"
+            :style="{ opacity: String(Math.min(0.16, Math.max(0.06, 1 - routeProgress))) }"
+          />
+          <router-view v-slot="{ Component, route: childRoute }">
+            <Transition name="fade-slide" mode="out-in" appear>
+              <div :key="childRoute.fullPath" class="route-page h-full">
+                <component :is="Component" />
+              </div>
+            </Transition>
+          </router-view>
+        </div>
       </main>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUpdate, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUpdate, onMounted, onUnmounted, ref, watch } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '../api/auth'
 import { Button } from '@/components/ui/button'
@@ -171,14 +242,18 @@ import gsap from 'gsap'
 import {
   Activity,
   BrainCircuit,
+  ChevronLeft,
+  ChevronRight,
   LogOut,
+  Moon,
   PanelLeft,
   Radar,
   ScanSearch,
   Settings,
   ShieldAlert,
   ShieldCheck,
-  UserRound
+  Sun,
+  UserRound,
 } from 'lucide-vue-next'
 
 type ModeKey = 'defense' | 'probe'
@@ -190,31 +265,207 @@ const username = ref('user')
 const role = ref('viewer')
 const shellRef = ref<HTMLElement | null>(null)
 const sidebarRef = ref<HTMLElement | null>(null)
+
+// 路由进度条状态
+const isRouteChanging = ref(false)
+const routeProgress = ref(0)
+const isDarkMode = ref(false)
+const THEME_KEY = 'theme'
+const SIDEBAR_COLLAPSED_KEY = 'layout_sidebar_collapsed'
+const SIDEBAR_WIDTH_STEP_KEY = 'layout_sidebar_width_step'
+const sidebarWidthPresets = [160, 180, 200] as const
+const minSidebarWidthStep = 0
+const defaultSidebarWidthStep = 1
+const maxSidebarWidthStep = sidebarWidthPresets.length - 1
+
+const sidebarCollapsed = ref(false)
+const sidebarWidthStep = ref(defaultSidebarWidthStep)
+const isSidebarResizing = ref(false)
+let sidebarResizeMoveHandler: ((event: MouseEvent) => void) | null = null
+let sidebarResizeUpHandler: (() => void) | null = null
+
+const normalizeSidebarWidthStep = (value: number) => {
+  return Math.min(maxSidebarWidthStep, Math.max(minSidebarWidthStep, value))
+}
+
+const widthToStep = (width: number) => {
+  let nearestStep = defaultSidebarWidthStep
+  let nearestDiff = Number.POSITIVE_INFINITY
+
+  sidebarWidthPresets.forEach((presetWidth, step) => {
+    const diff = Math.abs(presetWidth - width)
+    if (diff < nearestDiff) {
+      nearestDiff = diff
+      nearestStep = step
+    }
+  })
+
+  return nearestStep
+}
+
+const sidebarCurrentWidth = computed(() => {
+  if (sidebarCollapsed.value) return 72
+  return sidebarWidthPresets[sidebarWidthStep.value]
+})
+
+const toggleSidebarCollapsed = () => {
+  sidebarCollapsed.value = !sidebarCollapsed.value
+}
+
+const loadSidebarPreference = () => {
+  const savedCollapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
+  if (savedCollapsed !== null) {
+    sidebarCollapsed.value = savedCollapsed === '1' || savedCollapsed === 'true'
+  }
+
+  const savedStep = localStorage.getItem(SIDEBAR_WIDTH_STEP_KEY)
+  if (savedStep !== null) {
+    const parsedStep = Number.parseInt(savedStep, 10)
+    if (!Number.isNaN(parsedStep)) {
+      sidebarWidthStep.value = normalizeSidebarWidthStep(parsedStep)
+    }
+  }
+}
+
+const updateSidebarWidthByClientX = (clientX: number) => {
+  const shellEl = shellRef.value
+  if (!shellEl) return
+
+  const shellLeft = shellEl.getBoundingClientRect().left
+  const nextWidth = clientX - shellLeft
+  const clampedWidth = Math.min(sidebarWidthPresets[maxSidebarWidthStep], Math.max(sidebarWidthPresets[minSidebarWidthStep], nextWidth))
+  sidebarWidthStep.value = widthToStep(clampedWidth)
+}
+
+const stopSidebarResize = () => {
+  isSidebarResizing.value = false
+
+  if (sidebarResizeMoveHandler) {
+    window.removeEventListener('mousemove', sidebarResizeMoveHandler)
+    sidebarResizeMoveHandler = null
+  }
+
+  if (sidebarResizeUpHandler) {
+    window.removeEventListener('mouseup', sidebarResizeUpHandler)
+    sidebarResizeUpHandler = null
+  }
+}
+
+const startSidebarResize = (event: MouseEvent) => {
+  if (sidebarCollapsed.value || event.button !== 0) return
+
+  event.preventDefault()
+  isSidebarResizing.value = true
+
+  sidebarResizeMoveHandler = (moveEvent: MouseEvent) => {
+    updateSidebarWidthByClientX(moveEvent.clientX)
+  }
+
+  sidebarResizeUpHandler = () => {
+    stopSidebarResize()
+  }
+
+  window.addEventListener('mousemove', sidebarResizeMoveHandler)
+  window.addEventListener('mouseup', sidebarResizeUpHandler)
+}
+
+watch(sidebarCollapsed, (collapsed) => {
+  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0')
+})
+
+watch(sidebarWidthStep, (step) => {
+  localStorage.setItem(SIDEBAR_WIDTH_STEP_KEY, String(normalizeSidebarWidthStep(step)))
+})
+
+const applyTheme = (mode: 'light' | 'dark') => {
+  const root = document.documentElement
+  root.classList.toggle('dark', mode === 'dark')
+  isDarkMode.value = mode === 'dark'
+  localStorage.setItem(THEME_KEY, mode)
+}
+
+const initTheme = () => {
+  const savedTheme = localStorage.getItem(THEME_KEY)
+  if (savedTheme === 'light' || savedTheme === 'dark') {
+    applyTheme(savedTheme)
+    return
+  }
+
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  applyTheme(prefersDark ? 'dark' : 'light')
+}
+
+const toggleTheme = async (event?: MouseEvent) => {
+  const newMode = isDarkMode.value ? 'light' : 'dark'
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  if (reducedMotion) {
+    applyTheme(newMode)
+    return
+  }
+
+  const triggerElement = event?.currentTarget
+  if (!(triggerElement instanceof HTMLElement)) {
+    applyTheme(newMode)
+    return
+  }
+
+  const rect = triggerElement.getBoundingClientRect()
+  const x = rect.left + rect.width / 2
+  const y = rect.top + rect.height / 2
+
+  // 使用动画配置系统
+  const { executeThemeAnimation, getAnimationConfig } = await import('@/composables/useThemeAnimation')
+  const config = getAnimationConfig()
+  
+  // View Transitions API 会在内部切换主题，其他动画需要手动切换
+  if (config.type === 'view') {
+    const root = document.documentElement
+    root.classList.add('view-transitioning')
+    isDarkMode.value = newMode === 'dark'
+    localStorage.setItem(THEME_KEY, newMode)
+    try {
+      await executeThemeAnimation({ x, y, reducedMotion })
+    } finally {
+      root.classList.remove('view-transitioning')
+    }
+  } else {
+    // 其他动画：在动画中间切换主题
+    const animationPromise = executeThemeAnimation({ x, y, reducedMotion })
+    setTimeout(() => {
+      applyTheme(newMode)
+    }, config.duration / 2)
+    await animationPromise
+  }
+}
+
 const contentRef = ref<HTMLElement | null>(null)
 const maskWrapRef = ref<HTMLElement | null>(null)
 const maskPanelRefs = ref<HTMLElement[]>([])
 const impactPulseRef = ref<HTMLElement | null>(null)
 const inkTopRef = ref<HTMLElement | null>(null)
 const inkBottomRef = ref<HTMLElement | null>(null)
+const transitionTitleRef = ref<HTMLElement | null>(null)
+const transitionTitleText = ref('')
 const isModeSwitching = ref(false)
 let modeTimeline: gsap.core.Timeline | null = null
 
-const setMaskPanelRef = (el: Element | null) => {
-  if (el instanceof HTMLElement) {
-    maskPanelRefs.value.push(el)
+const setMaskPanelRef = (el: Element | ComponentPublicInstance | null) => {
+  const maybeElement = el instanceof HTMLElement
+    ? el
+    : (el && '$el' in el && el.$el instanceof HTMLElement ? el.$el : null)
+
+  if (maybeElement) {
+    maskPanelRefs.value.push(maybeElement)
   }
 }
 
-const maskPanels = [0, 1, 2, 3, 4, 5, 6, 7]
+const maskPanels = Array.from({ length: 12 }, (_, i) => i)
 
 onBeforeUpdate(() => {
   maskPanelRefs.value = []
 })
 
-const modeTabs: { value: ModeKey; label: string }[] = [
-  { value: 'defense', label: '防御坚守' },
-  { value: 'probe', label: '主动探测' },
-]
 
 const sidebarMap: Record<ModeKey, { to: string; label: string; icon: unknown }[]> = {
   defense: [
@@ -249,26 +500,18 @@ const roleBadgeVariant = computed(() => {
   return role.value === 'admin' ? ('default' as const) : ('secondary' as const)
 })
 
-const getContentBlocks = () => {
-  const contentEl = contentRef.value
-  if (!contentEl) return [] as HTMLElement[]
-  const root = contentEl.firstElementChild
-  if (!(root instanceof HTMLElement)) return [] as HTMLElement[]
-
-  const sections = Array.from(root.children).filter((node): node is HTMLElement => node instanceof HTMLElement)
-  if (sections.length > 1) return sections
-  return [root]
-}
+// function removed
 
 const resetAnimatedState = () => {
-  if (shellRef.value) gsap.set(shellRef.value, { scale: 1, opacity: 1 })
-  if (sidebarRef.value) gsap.set(sidebarRef.value, { x: 0, opacity: 1, clearProps: 'filter' })
-  if (contentRef.value) gsap.set(contentRef.value, { x: 0, opacity: 1, scale: 1 })
+  if (shellRef.value) gsap.set(shellRef.value, { clearProps: 'all' })
+  if (sidebarRef.value) gsap.set(sidebarRef.value, { clearProps: 'transform,opacity,filter' })
+  if (contentRef.value) gsap.set(contentRef.value, { clearProps: 'all' })
   if (maskWrapRef.value) gsap.set(maskWrapRef.value, { autoAlpha: 0, display: 'none' })
-  if (maskPanelRefs.value.length > 0) gsap.set(maskPanelRefs.value, { xPercent: 0, skewX: 0, yPercent: 0 })
-  if (impactPulseRef.value) gsap.set(impactPulseRef.value, { autoAlpha: 0, scale: 0.4 })
-  if (inkTopRef.value) gsap.set(inkTopRef.value, { autoAlpha: 0, scaleX: 0 })
-  if (inkBottomRef.value) gsap.set(inkBottomRef.value, { autoAlpha: 0, scaleX: 0 })
+  if (maskPanelRefs.value.length > 0) gsap.set(maskPanelRefs.value, { clearProps: 'all' })
+  if (impactPulseRef.value) gsap.set(impactPulseRef.value, { autoAlpha: 0, scale: 0.4, clearProps: 'all' })
+  if (inkTopRef.value) gsap.set(inkTopRef.value, { autoAlpha: 0, scaleX: 0, clearProps: 'all' })
+  if (inkBottomRef.value) gsap.set(inkBottomRef.value, { autoAlpha: 0, scaleX: 0, clearProps: 'all' })
+  if (transitionTitleRef.value) gsap.set(transitionTitleRef.value, { autoAlpha: 0, scale: 1, letterSpacing: '0.5em', clearProps: 'all' })
 }
 
 const runModeTransition = (targetMode: ModeKey) => {
@@ -279,14 +522,12 @@ const runModeTransition = (targetMode: ModeKey) => {
   const pulseEl = impactPulseRef.value
   const topLineEl = inkTopRef.value
   const bottomLineEl = inkBottomRef.value
-  if (!sidebarEl || !contentEl || !shellEl || !maskWrapEl || !pulseEl || !topLineEl || !bottomLineEl || maskPanelRefs.value.length === 0) {
-    router.push(sidebarMap[targetMode][0].to)
-    return
-  }
-
-  const direction = targetMode === 'probe' ? 1 : -1
-  const sidebarItems = sidebarEl.querySelectorAll('[data-sidebar-item]')
   const panels = maskPanelRefs.value
+  const titleEl = transitionTitleRef.value
+
+  const isProbe = targetMode === 'probe'
+  const accentColor = isProbe ? '#f97316' : '#3b82f6' // Orange for Probe, Blue for Defense
+  transitionTitleText.value = isProbe ? '主动探测' : '防御坚守'
 
   if (modeTimeline) {
     modeTimeline.kill()
@@ -294,51 +535,221 @@ const runModeTransition = (targetMode: ModeKey) => {
   }
 
   isModeSwitching.value = true
-  gsap.set(maskWrapEl, { display: 'block', autoAlpha: 1 })
-  gsap.set(panels, {
-    xPercent: -direction * 145,
-    skewX: direction * 10,
-    yPercent: (index: number) => (index % 2 === 0 ? -5 : 5),
-    transformOrigin: direction === 1 ? 'left center' : 'right center',
+
+  // Fallback
+  if (!contentEl || !shellEl || !maskWrapEl) {
+    void router.push(sidebarMap[targetMode][0].to).then(() => {
+      isModeSwitching.value = false
+    })
+    return
+  }
+
+  // Initial States
+  gsap.set(maskWrapEl, { display: 'flex', autoAlpha: 1 })
+  gsap.set(panels, { 
+    scaleY: 0, 
+    transformOrigin: 'top', 
+    backgroundColor: isProbe ? '#0c0a09' : '#0f172a', 
+    borderColor: isProbe ? 'rgba(249, 115, 22, 0.2)' : 'rgba(59, 130, 246, 0.2)'
   })
-  gsap.set(pulseEl, { autoAlpha: 0, scale: 0.4 })
-  gsap.set([topLineEl, bottomLineEl], { autoAlpha: 0, scaleX: 0, transformOrigin: direction === 1 ? 'left center' : 'right center' })
+  
+  if (pulseEl) {
+    gsap.set(pulseEl, { 
+      autoAlpha: 0, 
+      scale: 0,
+      borderColor: accentColor,
+      boxShadow: `0 0 30px ${accentColor}`
+    })
+  }
+
+  if (topLineEl && bottomLineEl) {
+    gsap.set([topLineEl, bottomLineEl], { 
+      scaleX: 0, 
+      autoAlpha: 0,
+      backgroundColor: accentColor,
+      boxShadow: `0 0 20px ${accentColor}`
+    })
+  }
+
+  if (titleEl) {
+    gsap.set(titleEl, {
+      autoAlpha: 0,
+      scale: 0.8,
+      letterSpacing: '1em',
+      textShadow: `0 0 0px ${accentColor}`
+    })
+  }
 
   modeTimeline = gsap.timeline({
-    defaults: { ease: 'power3.out' },
     onComplete: () => {
       isModeSwitching.value = false
       modeTimeline = null
       resetAnimatedState()
-    },
+    }
   })
 
+  // --- Animation Sequence (Slower & Cinematic) ---
+  
+  // 1. Initiate: Content scales down
   modeTimeline
-    .to([topLineEl, bottomLineEl], { autoAlpha: 1, scaleX: 1, duration: 0.18, ease: 'power2.out' }, 0)
-    .to(panels, { xPercent: 0, skewX: 0, yPercent: 0, duration: 0.44, stagger: { each: 0.05, from: 'center' }, ease: 'expo.out' }, 0.01)
-    .fromTo(pulseEl, { autoAlpha: 0, scale: 0.4 }, { autoAlpha: 0.28, scale: 1.65, duration: 0.34, ease: 'power2.out' }, 0.05)
-    .to(contentEl, { x: direction * 82, opacity: 0.01, scale: 0.962, duration: 0.3, ease: 'power3.in' }, 0.05)
-    .to(sidebarEl, { x: -direction * 36, opacity: 0.14, duration: 0.28, ease: 'power3.in' }, 0.05)
-    .to(shellEl, { scale: 0.995, duration: 0.32 }, 0.06)
-    .add(async () => {
-      await router.push(sidebarMap[targetMode][0].to)
-      await nextTick()
-      const blocks = getContentBlocks()
-      if (blocks.length > 0) {
-        gsap.fromTo(
-          blocks,
-          { y: direction * 28, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.48, stagger: 0.075, ease: 'power3.out' },
-        )
+    .to(contentEl, {
+      filter: 'blur(4px) grayscale(80%)',
+      opacity: 0.6,
+      duration: 0.6,
+      ease: 'power2.inOut'
+    }, 0)
+    .to(shellEl, {
+      backgroundColor: '#000',
+      duration: 0.6
+    }, 0)
+
+  if (sidebarEl) {
+    modeTimeline.to(sidebarEl, {
+      scaleX: 1,
+      filter: 'blur(4px) grayscale(80%)',
+      opacity: 0.6,
+      transformOrigin: 'center center',
+      duration: 0.6,
+      ease: 'power2.inOut'
+    }, 0)
+  }
+
+  // 2. Tech Wipe: Panels slam down (Full Cover)
+  modeTimeline.to(panels, {
+    scaleY: 1,
+    duration: 0.7,
+    stagger: {
+      amount: 0.3,
+      from: isProbe ? 'start' : 'end',
+      grid: [1, 12]
+    },
+    ease: 'expo.inOut'
+  }, 0.2)
+
+  // 3. Scan Lines: Zip across during close
+  if (topLineEl && bottomLineEl) {
+    modeTimeline.to([topLineEl, bottomLineEl], {
+      autoAlpha: 1,
+      scaleX: 1,
+      duration: 0.5,
+      ease: 'power2.inOut'
+    }, 0.3)
+  }
+
+  // 4. TITLE REVEAL (The "Middle" Moment)
+  // Starts when panels are mostly down (around 0.8s)
+  if (titleEl) {
+    modeTimeline
+      .to(titleEl, {
+        autoAlpha: 1,
+        scale: 1,
+        letterSpacing: '0.2em', // Compress tracking
+        textShadow: `0 0 30px ${accentColor}`,
+        duration: 0.8,
+        ease: 'power4.out'
+      }, 0.7) // Start appearing as panels finish closing
+      
+      // Glitch shake effect
+      .to(titleEl, {
+        x: 2,
+        y: -2,
+        duration: 0.05,
+        repeat: 5,
+        yoyo: true,
+        ease: 'steps(1)'
+      }, 0.8)
+      
+      // Hold for a moment (0.5s pause implicit in duration)
+      .to(titleEl, {
+        autoAlpha: 0,
+        scale: 1.5,
+        filter: 'blur(10px)',
+        letterSpacing: '0.5em',
+        duration: 0.4,
+        ease: 'power2.in'
+      }, 1.6) // Fade out after hold
+  }
+
+  // 5. Switch Router (Hidden behind panels)
+  modeTimeline.add(() => {
+    void router.push(sidebarMap[targetMode][0].to).then(() => {
+      gsap.set(contentEl, {
+        filter: 'blur(10px) brightness(1.5)',
+        opacity: 0
+      })
+
+      if (sidebarEl) {
+        gsap.set(sidebarEl, {
+          filter: 'blur(10px) brightness(1.5)',
+          scaleX: 1,
+          opacity: 0,
+          transformOrigin: 'center center'
+        })
       }
-    }, 0.16)
-    .to(pulseEl, { autoAlpha: 0, scale: 2.1, duration: 0.28, ease: 'power1.in' }, 0.24)
-    .to(panels, { xPercent: direction * 148, skewX: -direction * 8, yPercent: (index: number) => (index % 2 === 0 ? 4 : -4), duration: 0.5, stagger: { each: 0.046, from: 'edges' }, ease: 'expo.inOut' }, 0.3)
-    .to([topLineEl, bottomLineEl], { autoAlpha: 0, scaleX: 0, duration: 0.24, ease: 'power2.in' }, 0.42)
-    .fromTo(contentEl, { x: -direction * 52, opacity: 0.04, scale: 0.972 }, { x: 0, opacity: 1, scale: 1, duration: 0.56, ease: 'power4.out' }, 0.4)
-    .fromTo(sidebarEl, { x: direction * 26, opacity: 0.28 }, { x: 0, opacity: 1, duration: 0.42, ease: 'power3.out' }, 0.45)
-    .fromTo(sidebarItems, { x: direction * 18, opacity: 0 }, { x: 0, opacity: 1, duration: 0.34, stagger: 0.045, ease: 'power2.out' }, 0.52)
-    .to(shellEl, { scale: 1, duration: 0.34 }, 0.48)
+    })
+  }, 1.2) // Switch happens while text is visible
+
+  // 6. Reveal: Panels retract (Starts after title fades out)
+  const revealStart = 1.8 // Delayed start
+  
+  modeTimeline.to(panels, {
+    scaleY: 0,
+    transformOrigin: 'bottom',
+    duration: 0.7,
+    stagger: {
+      amount: 0.2,
+      from: isProbe ? 'end' : 'start'
+    },
+    ease: 'expo.inOut'
+  }, revealStart)
+
+  // 7. Lines fade out
+  if (topLineEl && bottomLineEl) {
+    modeTimeline.to([topLineEl, bottomLineEl], {
+      scaleX: 0,
+      autoAlpha: 0,
+      transformOrigin: isProbe ? 'right' : 'left',
+      duration: 0.4
+    }, revealStart + 0.1)
+  }
+
+  // 8. Energy Burst (Sync with reveal)
+  if (pulseEl) {
+    modeTimeline
+      .set(pulseEl, { autoAlpha: 1, scale: 0.1 }, revealStart)
+      .to(pulseEl, {
+        scale: 4,
+        autoAlpha: 0,
+        duration: 0.6,
+        ease: 'power2.out'
+      }, revealStart)
+  }
+
+  // 9. Content Returns
+  modeTimeline.to(contentEl, {
+    filter: 'blur(0px) brightness(1)',
+    opacity: 1,
+    duration: 0.8,
+    ease: 'power3.out'
+  }, revealStart + 0.2)
+
+  if (sidebarEl) {
+    modeTimeline.to(sidebarEl, {
+      scaleX: 1,
+      scaleY: 1,
+      filter: 'blur(0px) brightness(1)',
+      opacity: 1,
+      duration: 0.8,
+      ease: 'power3.out'
+    }, revealStart + 0.2)
+  }
+  
+  // 10. Restore Shell
+  modeTimeline.to(shellEl, {
+    backgroundColor: '',
+    clearProps: 'backgroundColor',
+    duration: 0.5
+  }, revealStart + 0.3)
 }
 
 const switchMode = (mode: ModeKey) => {
@@ -347,7 +758,7 @@ const switchMode = (mode: ModeKey) => {
   runModeTransition(mode)
 }
 
-const onModeChange = (nextMode: string) => {
+const onModeChange = (nextMode: string | number) => {
   if (nextMode === 'defense' || nextMode === 'probe') {
     switchMode(nextMode)
   }
@@ -361,13 +772,41 @@ const goToProfile = () => {
   router.push('/profile')
 }
 
+// 路由进度条逻辑
+let progressTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(() => route.fullPath, () => {
+  isRouteChanging.value = true
+  routeProgress.value = 0.25
+  
+  if (progressTimer) clearTimeout(progressTimer)
+  
+  progressTimer = setTimeout(() => {
+    routeProgress.value = 0.68
+  }, 180)
+  
+  nextTick(() => {
+    setTimeout(() => {
+      routeProgress.value = 1
+      setTimeout(() => {
+        isRouteChanging.value = false
+        routeProgress.value = 0
+      }, 220)
+    }, 120)
+  })
+})
+
 onMounted(() => {
+  initTheme()
+  loadSidebarPreference()
+
   const userInfo = localStorage.getItem('user_info')
   if (userInfo) {
     const user = JSON.parse(userInfo)
     username.value = user.username || 'user'
     role.value = user.role || 'viewer'
   }
+
   resetAnimatedState()
 })
 
@@ -376,6 +815,11 @@ onUnmounted(() => {
     modeTimeline.kill()
     modeTimeline = null
   }
+  if (progressTimer) {
+    clearTimeout(progressTimer)
+    progressTimer = null
+  }
+  stopSidebarResize()
 })
 
 const handleLogout = async () => {
