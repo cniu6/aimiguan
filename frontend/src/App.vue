@@ -1,16 +1,8 @@
 <template>
-  <div id="app">
-    <router-view />
-  </div>
+  <router-view />
+  <Toaster position="top-right" :theme="'dark'" rich-colors />
 </template>
 
 <script setup lang="ts">
-// App root component
+import { Toaster } from '@/components/ui/sonner'
 </script>
-
-<style>
-#app {
-  width: 100%;
-  height: 100vh;
-}
-</style>

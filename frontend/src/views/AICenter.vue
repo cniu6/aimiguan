@@ -1,45 +1,93 @@
 <template>
-  <div class="ai-center">
-    <div class="header">
-      <h1>AI 中枢</h1>
-      <p class="subtitle">智能对话与分析</p>
+  <div class="p-6 max-w-[1400px] mx-auto space-y-8">
+    <!-- Header -->
+    <div>
+      <h1 class="text-2xl font-semibold text-foreground">AI 中枢</h1>
+      <p class="text-sm text-muted-foreground mt-1">智能对话与分析</p>
     </div>
 
-    <div class="content-grid">
-      <div class="chat-section">
-        <h2>AI 对话</h2>
-        <div class="chat-container">
-          <div class="messages">
-            <div v-for="(msg, idx) in messages" :key="idx" class="message" :class="msg.role">
-              <div class="message-content">{{ msg.content }}</div>
+    <div class="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6">
+      <!-- Chat section -->
+      <Card class="flex flex-col h-[600px]">
+        <CardHeader class="pb-3">
+          <CardTitle class="text-base">AI 对话</CardTitle>
+        </CardHeader>
+        <CardContent class="flex-1 flex flex-col min-h-0 pt-0">
+          <ScrollArea class="flex-1 pr-4">
+            <div class="space-y-3 pb-2">
+              <div v-if="messages.length === 0" class="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <BrainCircuit class="size-10 opacity-30 mb-3" />
+                <p class="text-sm">输入消息开始对话</p>
+              </div>
+              <div
+                v-for="(msg, idx) in messages" :key="idx"
+                class="flex"
+                :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
+              >
+                <div
+                  class="max-w-[80%] rounded-lg px-4 py-2.5 text-sm"
+                  :class="msg.role === 'user'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-foreground'"
+                >
+                  {{ msg.content }}
+                </div>
+              </div>
             </div>
-          </div>
-          <div class="input-area">
-            <input
-              v-model="inputMessage"
-              @keyup.enter="sendMessage"
-              type="text"
-              placeholder="输入消息..."
-            />
-            <button @click="sendMessage" class="btn-send">发送</button>
-          </div>
-        </div>
-      </div>
+          </ScrollArea>
 
-      <div class="report-section">
-        <h2>AI 报告</h2>
-        <div class="report-types">
-          <button @click="generateReport('daily')" class="report-btn">生成日报</button>
-          <button @click="generateReport('weekly')" class="report-btn">生成周报</button>
-        </div>
-        <div v-if="reports.length > 0" class="reports-list">
-          <div v-for="report in reports" :key="report.id" class="report-item">
-            <div class="report-type">{{ report.report_type }}</div>
-            <div class="report-summary">{{ report.summary }}</div>
-            <div class="report-time">{{ formatTime(report.created_at) }}</div>
+          <Separator class="my-3" />
+
+          <form @submit.prevent="sendMessage" class="flex gap-3">
+            <Input
+              v-model="inputMessage"
+              placeholder="输入消息，如：分析 IP 1.2.3.4 ..."
+              class="flex-1"
+            />
+            <Button type="submit" class="cursor-pointer" :disabled="!inputMessage.trim()">
+              <Send class="size-4" />
+              发送
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <!-- Report section -->
+      <Card>
+        <CardHeader class="pb-3">
+          <CardTitle class="text-base">AI 报告</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-4 pt-0">
+          <div class="flex gap-3">
+            <Button variant="outline" size="sm" class="cursor-pointer" @click="generateReport('daily')">
+              <FileText class="size-4" />
+              生成日报
+            </Button>
+            <Button variant="outline" size="sm" class="cursor-pointer" @click="generateReport('weekly')">
+              <FileText class="size-4" />
+              生成周报
+            </Button>
           </div>
-        </div>
-      </div>
+
+          <Separator />
+
+          <ScrollArea class="h-[440px]">
+            <div v-if="reports.length === 0" class="text-center py-10 text-muted-foreground">
+              <FileText class="size-10 mx-auto mb-3 opacity-30" />
+              <p class="text-sm">暂无报告</p>
+            </div>
+            <div v-else class="space-y-3">
+              <Card v-for="report in reports" :key="report.id" class="bg-muted/50">
+                <CardContent class="pt-0 space-y-1">
+                  <p class="font-medium text-sm text-foreground">{{ report.report_type }}</p>
+                  <p class="text-sm text-muted-foreground line-clamp-2">{{ report.summary }}</p>
+                  <p class="text-xs text-muted-foreground/60">{{ formatTime(report.created_at) }}</p>
+                </CardContent>
+              </Card>
+            </div>
+          </ScrollArea>
+        </CardContent>
+      </Card>
     </div>
   </div>
 </template>
@@ -48,6 +96,12 @@
 import { ref, onMounted } from 'vue'
 import { aiApi } from '@/api/ai'
 import { reportApi } from '@/api/report'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { BrainCircuit, Send, FileText } from 'lucide-vue-next'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -67,11 +121,9 @@ const reports = ref<Report[]>([])
 
 const sendMessage = async () => {
   if (!inputMessage.value.trim()) return
-
   const userMessage = inputMessage.value
   messages.value.push({ role: 'user', content: userMessage })
   inputMessage.value = ''
-
   try {
     const response = await aiApi.chat(userMessage)
     messages.value.push({ role: 'assistant', content: response.message })
@@ -99,172 +151,7 @@ const loadReports = async () => {
   }
 }
 
-const formatTime = (time: string) => {
-  return new Date(time).toLocaleString('zh-CN')
-}
+const formatTime = (time: string) => new Date(time).toLocaleString('zh-CN')
 
-onMounted(() => {
-  loadReports()
-})
+onMounted(() => { loadReports() })
 </script>
-
-<style scoped>
-.ai-center {
-  padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-.header {
-  margin-bottom: 32px;
-}
-
-.header h1 {
-  font-size: 28px;
-  font-weight: 600;
-  color: #1E293B;
-  margin-bottom: 8px;
-}
-
-.subtitle {
-  color: #64748B;
-  font-size: 14px;
-}
-
-.content-grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 24px;
-}
-
-.chat-section, .report-section {
-  background: white;
-  padding: 24px;
-  border-radius: 8px;
-  border: 1px solid #E2E8F0;
-}
-
-.chat-section h2, .report-section h2 {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1E293B;
-  margin-bottom: 16px;
-}
-
-.chat-container {
-  display: flex;
-  flex-direction: column;
-  height: 500px;
-}
-
-.messages {
-  flex: 1;
-  overflow-y: auto;
-  margin-bottom: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.message {
-  padding: 12px 16px;
-  border-radius: 8px;
-  max-width: 80%;
-}
-
-.message.user {
-  background: #3B82F6;
-  color: white;
-  align-self: flex-end;
-}
-
-.message.assistant {
-  background: #F1F5F9;
-  color: #1E293B;
-  align-self: flex-start;
-}
-
-.input-area {
-  display: flex;
-  gap: 12px;
-}
-
-.input-area input {
-  flex: 1;
-  padding: 10px;
-  border: 1px solid #E2E8F0;
-  border-radius: 6px;
-  font-size: 14px;
-}
-
-.btn-send {
-  padding: 10px 20px;
-  background: #3B82F6;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-send:hover {
-  background: #2563EB;
-}
-
-.report-types {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.report-btn {
-  padding: 10px 20px;
-  background: #F1F5F9;
-  color: #475569;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.report-btn:hover {
-  background: #E2E8F0;
-}
-
-.reports-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.report-item {
-  padding: 16px;
-  background: #F8FAFC;
-  border-radius: 6px;
-}
-
-.report-type {
-  font-weight: 600;
-  color: #1E293B;
-  margin-bottom: 8px;
-}
-
-.report-summary {
-  color: #64748B;
-  font-size: 14px;
-  margin-bottom: 8px;
-}
-
-.report-time {
-  color: #94A3B8;
-  font-size: 12px;
-}
-
-@media (max-width: 768px) {
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>

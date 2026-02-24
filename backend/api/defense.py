@@ -78,7 +78,7 @@ async def approve_event(event_id: int, req: ApproveRequest, request: Request, db
     task = ExecutionTask(
         event_id=event_id,
         action="BLOCK",
-        state="PENDING",
+        state="QUEUED",
         trace_id=trace_id
     )
     db.add(task)

@@ -1,49 +1,77 @@
 <template>
-  <div class="scan-manager">
-    <div class="header">
-      <h1>扫描管理</h1>
-      <button @click="showCreateModal = true" class="btn-primary">新建扫描</button>
+  <div class="p-6 max-w-[1400px] mx-auto space-y-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+      <h1 class="text-2xl font-semibold text-foreground">扫描管理</h1>
+      <Dialog v-model:open="showCreateModal">
+        <DialogTrigger as-child>
+          <Button class="cursor-pointer">
+            <Plus class="size-4" />
+            新建扫描
+          </Button>
+        </DialogTrigger>
+        <DialogContent class="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>新建扫描任务</DialogTitle>
+            <DialogDescription>输入目标地址和扫描工具创建新任务</DialogDescription>
+          </DialogHeader>
+          <form @submit.prevent="createTask" class="space-y-4 pt-2">
+            <div class="space-y-2">
+              <Label for="target">目标地址</Label>
+              <Input id="target" v-model="newTask.target" placeholder="192.168.1.1" />
+            </div>
+            <div class="space-y-2">
+              <Label for="tool">扫描工具</Label>
+              <Select v-model="newTask.tool_name">
+                <SelectTrigger>
+                  <SelectValue placeholder="选择工具" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nmap">Nmap</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" type="button" class="cursor-pointer" @click="showCreateModal = false">取消</Button>
+              <Button type="submit" class="cursor-pointer">创建</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
 
-    <div class="tasks-section">
-      <h2>扫描任务</h2>
-      <div v-if="loading" class="loading">加载中...</div>
-      <div v-else-if="tasks.length === 0" class="empty">暂无扫描任务</div>
-      <div v-else class="tasks-list">
-        <div v-for="task in tasks" :key="task.id" class="task-card">
-          <div class="task-header">
-            <span class="task-target">{{ task.target }}</span>
-            <span class="task-state" :class="getStateClass(task.state)">{{ task.state }}</span>
-          </div>
-          <div class="task-body">
-            <p class="task-tool">工具: {{ task.tool_name }}</p>
-            <p class="task-time">创建时间: {{ formatTime(task.created_at) }}</p>
-          </div>
-          <div class="task-actions">
-            <button @click="viewTask(task.id)" class="btn-view">查看详情</button>
-          </div>
-        </div>
+    <!-- Tasks -->
+    <div class="space-y-4">
+      <h2 class="text-lg font-semibold text-foreground">扫描任务</h2>
+
+      <div v-if="loading" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Skeleton v-for="i in 3" :key="i" class="h-36 w-full" />
       </div>
-    </div>
 
-    <!-- Create Modal -->
-    <div v-if="showCreateModal" class="modal-overlay" @click="showCreateModal = false">
-      <div class="modal-content" @click.stop>
-        <h3>新建扫描任务</h3>
-        <div class="form-group">
-          <label>目标地址</label>
-          <input v-model="newTask.target" type="text" placeholder="192.168.1.1" />
-        </div>
-        <div class="form-group">
-          <label>扫描工具</label>
-          <select v-model="newTask.tool_name">
-            <option value="nmap">Nmap</option>
-          </select>
-        </div>
-        <div class="modal-actions">
-          <button @click="createTask" class="btn-primary">创建</button>
-          <button @click="showCreateModal = false" class="btn-secondary">取消</button>
-        </div>
+      <Card v-else-if="tasks.length === 0">
+        <CardContent class="py-10 text-center text-muted-foreground">
+          <Search class="size-10 mx-auto mb-3 opacity-30" />
+          暂无扫描任务
+        </CardContent>
+      </Card>
+
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Card v-for="task in tasks" :key="task.id">
+          <CardContent class="pt-0 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold text-foreground font-mono">{{ task.target }}</span>
+              <Badge :variant="getStateVariant(task.state)" :class="getStateColor(task.state)">
+                {{ task.state }}
+              </Badge>
+            </div>
+            <p class="text-sm text-muted-foreground">工具: {{ task.tool_name }}</p>
+            <p class="text-xs text-muted-foreground/60">{{ formatTime(task.created_at) }}</p>
+            <Button variant="outline" size="sm" class="cursor-pointer" @click="viewTask(task.id)">
+              <Eye class="size-4" />
+              查看详情
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   </div>
@@ -52,6 +80,15 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { scanApi } from '@/api/scan'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Plus, Search, Eye } from 'lucide-vue-next'
 
 interface ScanTask {
   id: number
@@ -64,10 +101,7 @@ interface ScanTask {
 const tasks = ref<ScanTask[]>([])
 const loading = ref(false)
 const showCreateModal = ref(false)
-const newTask = ref({
-  target: '',
-  tool_name: 'nmap'
-})
+const newTask = ref({ target: '', tool_name: 'nmap' })
 
 const loadTasks = async () => {
   loading.value = true
@@ -94,222 +128,23 @@ const createTask = async () => {
 
 const viewTask = (taskId: number) => {
   console.log('View task:', taskId)
-  // TODO: Navigate to task detail page
 }
 
-const getStateClass = (state: string) => {
-  const stateMap: Record<string, string> = {
-    'PENDING': 'state-pending',
-    'RUNNING': 'state-running',
-    'COMPLETED': 'state-completed',
-    'FAILED': 'state-failed'
+const getStateVariant = (state: string) => {
+  return state === 'FAILED' ? 'destructive' as const : 'secondary' as const
+}
+
+const getStateColor = (state: string) => {
+  const map: Record<string, string> = {
+    PENDING: 'bg-muted text-muted-foreground',
+    RUNNING: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    COMPLETED: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    FAILED: '',
   }
-  return stateMap[state] || 'state-pending'
+  return map[state] || ''
 }
 
-const formatTime = (time: string) => {
-  return new Date(time).toLocaleString('zh-CN')
-}
+const formatTime = (time: string) => new Date(time).toLocaleString('zh-CN')
 
-onMounted(() => {
-  loadTasks()
-})
+onMounted(() => { loadTasks() })
 </script>
-
-<style scoped>
-.scan-manager {
-  padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 32px;
-}
-
-.header h1 {
-  font-size: 28px;
-  font-weight: 600;
-  color: #1E293B;
-}
-
-.btn-primary {
-  padding: 10px 20px;
-  background: #3B82F6;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-primary:hover {
-  background: #2563EB;
-}
-
-.tasks-section h2 {
-  font-size: 20px;
-  font-weight: 600;
-  color: #1E293B;
-  margin-bottom: 16px;
-}
-
-.loading, .empty {
-  text-align: center;
-  padding: 40px;
-  color: #64748B;
-}
-
-.tasks-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
-}
-
-.task-card {
-  background: white;
-  padding: 20px;
-  border-radius: 8px;
-  border: 1px solid #E2E8F0;
-}
-
-.task-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.task-target {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1E293B;
-}
-
-.task-state {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.state-pending {
-  background: #F1F5F9;
-  color: #64748B;
-}
-
-.state-running {
-  background: #DBEAFE;
-  color: #2563EB;
-}
-
-.state-completed {
-  background: #D1FAE5;
-  color: #059669;
-}
-
-.state-failed {
-  background: #FEE2E2;
-  color: #DC2626;
-}
-
-.task-body {
-  margin-bottom: 16px;
-}
-
-.task-tool, .task-time {
-  color: #64748B;
-  font-size: 14px;
-  margin-bottom: 4px;
-}
-
-.btn-view {
-  padding: 8px 16px;
-  background: #F1F5F9;
-  color: #475569;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-view:hover {
-  background: #E2E8F0;
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-content {
-  background: white;
-  padding: 24px;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 500px;
-}
-
-.modal-content h3 {
-  font-size: 20px;
-  font-weight: 600;
-  color: #1E293B;
-  margin-bottom: 20px;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group label {
-  display: block;
-  color: #475569;
-  font-size: 14px;
-  margin-bottom: 8px;
-}
-
-.form-group input,
-.form-group select {
-  width: 100%;
-  padding: 10px;
-  border: 1px solid #E2E8F0;
-  border-radius: 6px;
-  font-size: 14px;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  margin-top: 24px;
-}
-
-.btn-secondary {
-  padding: 10px 20px;
-  background: #F1F5F9;
-  color: #475569;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-secondary:hover {
-  background: #E2E8F0;
-}
-</style>

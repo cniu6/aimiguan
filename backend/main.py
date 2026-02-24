@@ -1,12 +1,16 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
 import uuid
 from datetime import datetime
 
 from core.database import init_db
-from api import auth, defense, scan, report, ai_chat, tts, firewall
+from core.response import http_exception_handler, validation_exception_handler, general_exception_handler
+from core.middleware import TraceIDMiddleware
+from api import auth, defense, scan, report, ai_chat, tts, firewall, system
 
 def print_banner():
     banner = """
@@ -66,16 +70,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.middleware("http")
-async def add_trace_id(request: Request, call_next):
-    trace_id = request.headers.get("X-Trace-ID", str(uuid.uuid4()))
-    request.state.trace_id = trace_id
-    response = await call_next(request)
-    response.headers["X-Trace-ID"] = trace_id
-    return response
+app.add_middleware(TraceIDMiddleware)
+
+# Register exception handlers
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
 
 # Register API routers
 app.include_router(auth.router)
+app.include_router(system.router)
 app.include_router(defense.router)
 app.include_router(scan.router)
 app.include_router(report.router)

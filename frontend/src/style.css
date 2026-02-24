@@ -1,17 +1,66 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@import "tailwindcss";
+
+@import "tailwindcss";
+
+@theme inline {
+  --radius: 0.625rem;
+
+  /* shadcn-vue dark color tokens */
+  --color-background: oklch(0.145 0.014 285.823);
+  --color-foreground: oklch(0.985 0.002 247.858);
+  --color-card: oklch(0.205 0.016 285.938);
+  --color-card-foreground: oklch(0.985 0.002 247.858);
+  --color-popover: oklch(0.205 0.016 285.938);
+  --color-popover-foreground: oklch(0.985 0.002 247.858);
+  --color-primary: oklch(0.623 0.214 259.815);
+  --color-primary-foreground: oklch(0.985 0.002 247.858);
+  --color-secondary: oklch(0.269 0.015 285.786);
+  --color-secondary-foreground: oklch(0.985 0.002 247.858);
+  --color-muted: oklch(0.269 0.015 285.786);
+  --color-muted-foreground: oklch(0.708 0.02 261.325);
+  --color-accent: oklch(0.269 0.015 285.786);
+  --color-accent-foreground: oklch(0.985 0.002 247.858);
+  --color-destructive: oklch(0.704 0.191 22.216);
+  --color-border: oklch(0.335 0.014 285.823);
+  --color-input: oklch(0.335 0.014 285.823);
+  --color-ring: oklch(0.623 0.214 259.815);
+  --color-chart-1: oklch(0.488 0.243 264.376);
+  --color-chart-2: oklch(0.696 0.17 162.48);
+  --color-chart-3: oklch(0.769 0.188 70.08);
+  --color-chart-4: oklch(0.627 0.265 303.9);
+  --color-chart-5: oklch(0.645 0.246 16.439);
+  --color-sidebar: oklch(0.175 0.014 285.823);
+  --color-sidebar-foreground: oklch(0.985 0.002 247.858);
+  --color-sidebar-primary: oklch(0.623 0.214 259.815);
+  --color-sidebar-primary-foreground: oklch(0.985 0.002 247.858);
+  --color-sidebar-accent: oklch(0.269 0.015 285.786);
+  --color-sidebar-accent-foreground: oklch(0.985 0.002 247.858);
+  --color-sidebar-border: oklch(0.335 0.014 285.823);
+  --color-sidebar-ring: oklch(0.623 0.214 259.815);
+
+  /* semantic aliases */
+  --color-surface: oklch(0.145 0.014 285.823);
+  --color-surface-card: oklch(0.205 0.016 285.938);
+  --color-surface-elevated: oklch(0.269 0.015 285.786);
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
 }
 
-body {
-  font-family: Inter, system-ui, -apple-system, sans-serif;
-  line-height: 1.5;
-  color: #1E293B;
-  background: #F8FAFC;
-}
-
-#app {
-  width: 100%;
-  min-height: 100vh;
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  #app {
+    width: 100%;
+    min-height: 100vh;
+  }
 }
