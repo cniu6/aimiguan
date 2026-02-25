@@ -65,6 +65,54 @@
         </div>
 
         <div class="flex items-center gap-2">
+          <Sheet>
+            <SheetTrigger as-child>
+              <Button
+                variant="ghost"
+                size="icon"
+                class="relative cursor-pointer text-muted-foreground"
+              >
+                <Bell class="size-4" />
+                <span
+                  v-if="unreadNotifications > 0"
+                  class="absolute -top-0.5 -right-0.5 inline-flex h-2 w-2 rounded-full bg-red-500"
+                />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" class="w-[22rem] border-l border-border p-0">
+              <div class="border-b border-border px-4 py-3">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-sm font-semibold">通知中心</h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="h-7 cursor-pointer text-xs"
+                    @click="markAllNotificationsRead"
+                  >
+                    全部已读
+                  </Button>
+                </div>
+              </div>
+              <div class="max-h-[calc(100vh-4rem)] space-y-2 overflow-y-auto px-4 py-3">
+                <div
+                  v-for="item in notifications"
+                  :key="item.id"
+                  class="rounded-md border border-border bg-card px-3 py-2"
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="text-sm font-medium">{{ item.title }}</p>
+                    <span
+                      v-if="!item.read"
+                      class="inline-flex h-1.5 w-1.5 rounded-full bg-blue-500"
+                    />
+                  </div>
+                  <p class="mt-1 text-xs text-muted-foreground">{{ item.content }}</p>
+                  <p class="mt-2 text-[11px] text-muted-foreground/80">{{ item.time }}</p>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+
           <Button
             variant="ghost"
             size="icon"
@@ -109,6 +157,10 @@
               <DropdownMenuItem class="cursor-pointer" @click="goToSettings">
                 <Settings class="mr-2 size-4" />
                 系统设置
+              </DropdownMenuItem>
+              <DropdownMenuItem class="cursor-pointer" @click="goToSecuritySettings">
+                <ShieldAlert class="mr-2 size-4" />
+                安全设置
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem class="cursor-pointer text-destructive focus:text-destructive" @click="handleLogout">
@@ -180,7 +232,12 @@
           ]"
         >
           <p class="font-medium tracking-wide" :class="sidebarCollapsed ? 'text-[11px]' : 'text-xs'">
-            {{ sidebarCollapsed ? (activeMode === 'defense' ? '防御' : '探测') : activeModeLabel }}
+            <span
+              class="sidebar-mode-label"
+              :class="sidebarCollapsed ? 'sidebar-mode-label-collapsed' : 'sidebar-mode-label-expanded'"
+            >
+              {{ sidebarCollapsed ? (activeMode === 'defense' ? '防御' : '探测') : activeModeLabel }}
+            </span>
           </p>
         </div>
 
@@ -196,7 +253,12 @@
             active-class="bg-sidebar-accent text-sidebar-accent-foreground"
           >
             <component :is="item.icon" class="size-4" />
-            <span v-if="!sidebarCollapsed">{{ item.label }}</span>
+            <span
+              class="sidebar-item-label"
+              :class="sidebarCollapsed ? 'sidebar-item-label-collapsed' : 'sidebar-item-label-expanded'"
+            >
+              {{ item.label }}
+            </span>
           </router-link>
         </nav>
 
@@ -206,11 +268,19 @@
             class="flex h-11 w-full items-center rounded-md text-sidebar-foreground transition-colors duration-200 hover:bg-sidebar-accent focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
             :class="sidebarCollapsed ? 'justify-center px-2' : 'gap-2 px-3'"
             :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
+            :aria-label="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'"
             @click="toggleSidebarCollapsed"
           >
-            <ChevronRight v-if="sidebarCollapsed" class="size-4" />
-            <ChevronLeft v-else class="size-4" />
-            <span v-if="!sidebarCollapsed" class="text-sm">收起侧边栏</span>
+            <ChevronRight
+              class="size-4 transition-transform duration-300 ease-out"
+              :class="sidebarCollapsed ? 'rotate-0' : 'rotate-180'"
+            />
+            <span
+              class="sidebar-item-label text-sm"
+              :class="sidebarCollapsed ? 'sidebar-item-label-collapsed' : 'sidebar-item-label-expanded'"
+            >
+              收起侧边栏
+            </span>
           </button>
         </div>
 
@@ -250,6 +320,7 @@
         </div>
       </main>
     </div>
+
   </div>
 </template>
 
@@ -274,8 +345,8 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import gsap from 'gsap'
 import {
   Activity,
+  Bell,
   BrainCircuit,
-  ChevronLeft,
   ChevronRight,
   LogOut,
   Moon,
@@ -296,6 +367,11 @@ const route = useRoute()
 
 const username = ref('user')
 const role = ref('viewer')
+const notifications = ref([
+  { id: 'n-1', title: '工作台状态', content: '页面切换不会影响后端任务运行。', time: '刚刚', read: false },
+  { id: 'n-2', title: '审计任务完成', content: '最近一次导出任务已完成。', time: '5 分钟前', read: false },
+  { id: 'n-3', title: '扫描任务提示', content: '存在待确认扫描结果。', time: '15 分钟前', read: true },
+])
 const shellRef = ref<HTMLElement | null>(null)
 const sidebarRef = ref<HTMLElement | null>(null)
 
@@ -532,6 +608,8 @@ const roleText = computed(() => {
 const roleBadgeVariant = computed(() => {
   return role.value === 'admin' ? ('default' as const) : ('secondary' as const)
 })
+
+const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read).length)
 
 // function removed
 
@@ -801,6 +879,14 @@ const goToSettings = () => {
   router.push('/settings')
 }
 
+const goToSecuritySettings = () => {
+  router.push('/settings?tab=security')
+}
+
+const markAllNotificationsRead = () => {
+  notifications.value = notifications.value.map((item) => ({ ...item, read: true }))
+}
+
 const goToProfile = () => {
   router.push('/profile')
 }
@@ -867,3 +953,49 @@ const handleLogout = async () => {
   }
 }
 </script>
+
+<style scoped>
+.sidebar-item-label {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  transform-origin: left center;
+  transition: max-width 280ms ease, opacity 220ms ease, transform 280ms ease;
+}
+
+.sidebar-item-label-expanded {
+  max-width: 9rem;
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.sidebar-item-label-collapsed {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+}
+
+.sidebar-mode-label {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: max-width 280ms ease, opacity 220ms ease;
+}
+
+.sidebar-mode-label-expanded {
+  max-width: 10rem;
+  opacity: 1;
+}
+
+.sidebar-mode-label-collapsed {
+  max-width: 2.5rem;
+  opacity: 0.95;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-item-label,
+  .sidebar-mode-label {
+    transition: none;
+  }
+}
+</style>

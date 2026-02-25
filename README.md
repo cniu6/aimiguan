@@ -12,9 +12,10 @@
 - 运维手册、风险边界、后续演进
 
 ## 当前仓库状态
-- 当前仓库以“实施方案与架构文档”作为第一阶段产物。
-- 代码骨架尚未完全落地，建议按本 README 的“拟定变更 + 里程碑”顺序推进。
-- 文档中的目录与文件路径采用目标结构描述（便于后续按章节实施）。
+- 当前仓库已从纯方案阶段进入“可运行 + 持续迭代”阶段。
+- 已完成：Step 1 基础底座、Step 2 后端核心能力、Step 3 防御链路主干（含 AI 评分降级标记与 block 重试到 `MANUAL_REQUIRED`）。
+- 当前重点：补齐 Step 2 剩余项（2.5/2.6/2.17）并推进 Step 4 探测扫描链路。
+- 最新验证基线：`python -m pytest -q` 通过（16 passed），前端 `npm run build` 通过。
 
 ## 产品定位
 `Aimiguan` 是一个 AI 驱动的自动化安全运营产品，分为两大板块：`防御监控` 与 `探测扫描`。
@@ -2145,49 +2146,59 @@ requirements.txt
 - [x] 1.6 验证：空库可初始化，重复执行不报错（幂等初始化）。
 
 ### Step 2：鉴权与通用中间件（先于业务接口）
-- [ ] 2.1 设计并确认认证模型：用户、角色、权限点（viewer/operator/admin）。
-- [ ] 2.2 实现登录接口（账号密码校验、签发 access token）。
-- [ ] 2.3 实现刷新接口（refresh token 换新 access token）。
-- [ ] 2.4 实现 JWT 验签中间件（过期、签名、格式错误统一处理）。
+- [x] 2.1 设计并确认认证模型：用户、角色、权限点（viewer/operator/admin）。
+- [x] 2.2 实现登录接口（账号密码校验、签发 access token）。
+- [x] 2.3 实现刷新接口（refresh token 换新 access token）。
+- [x] 2.4 实现 JWT 验签中间件（过期、签名、格式错误统一处理）。
 - [ ] 2.5 实现 RBAC 权限装饰器（接口级权限点绑定）。
 - [ ] 2.6 完成前端路由守卫（未登录跳登录、无权限跳 403 页面）。
-- [ ] 2.7 实现 `trace_id` 中间件（优先读取请求头，缺失自动生成）。
-- [ ] 2.8 实现统一响应封装：`code/message/data/trace_id`。
-- [ ] 2.9 实现统一异常处理器（400xx/401xx/403xx/409xx/500xx/502xx）。
-- [ ] 2.10 新建 `api/system.py` 路由骨架（profile/settings/mode/notifications/search）。
-- [ ] 2.11 实现 `GET /api/v1/system/profile`（返回用户资料+权限）。
-- [ ] 2.12 实现 `GET/POST /api/v1/system/mode`（读取与切换主动/被动模式）。
-- [ ] 2.13 实现 `services/mode_service.py`（模式切换原子更新+审计记录）。
-- [ ] 2.14 实现 `services/audit_service.py`（统一写审计入口）。
-- [ ] 2.15 搭建后台 App Shell：`Sidebar + Topbar + RouterView + 右侧通知抽屉`。
-- [ ] 2.16 完成 Sidebar 菜单与路由元信息：`overview/defense/scan/ai-center/integrations/audit/settings`。
+- [x] 2.7 实现 `trace_id` 中间件（优先读取请求头，缺失自动生成）。
+- [x] 2.8 实现统一响应封装：`code/message/data/trace_id`。
+- [x] 2.9 实现统一异常处理器（400xx/401xx/403xx/409xx/500xx/502xx）。
+- [x] 2.10 新建 `api/system.py` 路由骨架（profile/settings/mode/notifications/search）。
+- [x] 2.11 实现 `GET /api/v1/system/profile`（返回用户资料+权限）。
+- [x] 2.12 实现 `GET/POST /api/v1/system/mode`（读取与切换主动/被动模式）。
+- [x] 2.13 实现 `services/mode_service.py`（模式切换原子更新+审计记录）。
+- [x] 2.14 实现 `services/audit_service.py`（统一写审计入口）。
+- [x] 2.15 搭建后台 App Shell：`Sidebar + Topbar + RouterView + 右侧通知抽屉`。
+- [x] 2.16 完成 Sidebar 菜单与路由元信息：`overview/defense/scan/ai-center/integrations/audit/settings`。
 - [ ] 2.17 完成 Topbar 主动/被动模式开关（影响说明+确认弹窗+原因输入）。
-- [ ] 2.18 完成右上角系统菜单（通知、个人中心、安全设置、系统设置、退出登录）。
-- [ ] 2.19 实现 `POST /api/v1/auth/logout`（会话失效/可选 token 黑名单）。
-- [ ] 2.20 实现前端退出清理（token/user/缓存）并跳转 `#/login`。
-- [ ] 2.21 验证：未授权拒绝、授权放行、`trace_id` 可追踪、模式切换可审计、退出后刷新仍需登录。
+- [x] 2.18 完成右上角系统菜单（通知、个人中心、安全设置、系统设置、退出登录）。
+- [x] 2.19 实现 `POST /api/v1/auth/logout`（会话失效/可选 token 黑名单）。
+- [x] 2.20 实现前端退出清理（token/user/缓存）并跳转 `#/login`。
+- [x] 2.21 验证：未授权拒绝、授权放行、`trace_id` 可追踪、模式切换可审计、退出后刷新仍需登录。
 
 ### Step 3：防御链路（MVP 主路径）
-- [ ] 3.1 定义 HFish 入站 DTO（`list_infos/attack_infos/attack_trend` 三结构）。
-- [ ] 3.2 实现源端响应校验（`response_code==0` 才进入解析，失败映射 `502xx`）。
-- [ ] 3.3 实现 `list_infos[]` 解析与字段映射（攻击来源聚合数据）。
-- [ ] 3.4 实现 `attack_infos[]` 解析与字段映射（攻击详情数据）。
-- [ ] 3.5 实现 `attack_trend[]` 解析（仅用于统计，不入 `threat_event` 明细）。
-- [ ] 3.6 统一时间处理：`attack_time/last_attack_time` 转 UTC 时间戳。
-- [ ] 3.7 实现标签标准化：`labels -> labels_cn -> unknown` 回退链。
-- [ ] 3.8 实现来源统一字段构建：`source_vendor/source_type/source_event_id`。
-- [ ] 3.9 实现字段容错：缺失字段落 `extra_json`，保留 `raw_payload`。
-- [ ] 3.10 实现去重键：`source_vendor + source_event_id`（无 id 时组合键兜底）。
-- [ ] 3.11 实现白名单/内网标记处理（`is_white/intranet` 参与策略判断）。
-- [ ] 3.12 落库 `threat_event`（基础字段 + 规范状态 + trace_id）。
-- [ ] 3.13 写接入审计日志（接入来源、条数、成功/失败、trace_id）。
-- [ ] 3.14 接入 AI 风险评分（失败时规则引擎兜底并标记降级来源）。
-- [ ] 3.15 回写 `ai_score/ai_reason/action_suggest` 到事件记录。
+- [x] 3.1 定义 HFish 入站 DTO（`list_infos/attack_infos/attack_trend` 三结构）。
+- [x] 3.2 实现源端响应校验（`response_code==0` 才进入解析，失败映射 `502xx`）。
+- [x] 3.3 实现 `list_infos[]` 解析与字段映射（攻击来源聚合数据）。
+- [x] 3.4 实现 `attack_infos[]` 解析与字段映射（攻击详情数据）。
+- [x] 3.5 实现 `attack_trend[]` 解析（仅用于统计，不入 `threat_event` 明细）。
+- [x] 3.6 统一时间处理：`attack_time/last_attack_time` 转 UTC 时间戳。
+- [x] 3.7 实现标签标准化：`labels -> labels_cn -> unknown` 回退链。
+- [x] 3.8 实现来源统一字段构建：`source_vendor/source_type/source_event_id`。
+- [x] 3.9 实现字段容错：缺失字段落 `extra_json`，保留 `raw_payload`。
+- [x] 3.10 实现去重键：`source_vendor + source_event_id`（无 id 时组合键兜底）。
+- [x] 3.11 实现白名单/内网标记处理（`is_white/intranet` 参与策略判断）。
+- [x] 3.12 落库 `threat_event`（基础字段 + 规范状态 + trace_id）。
+- [x] 3.13 写接入审计日志（接入来源、条数、成功/失败、trace_id）。
+- [x] 3.14 接入 AI 风险评分（失败时规则引擎兜底并标记降级来源）。
+- [x] 3.15 回写 `ai_score/ai_reason/action_suggest` 到事件记录。
 - [ ] 3.16 实现待审批列表 API（状态、时间、风险等级筛选）。
-- [ ] 3.17 实现审批接口（Approve/Reject + 操作理由）。
-- [ ] 3.18 审批通过后创建 `execution_task(QUEUED)`（幂等防重）。
-- [ ] 3.19 实现执行器调用 `block_ip`、失败重试（指数退避）与 `MANUAL_REQUIRED`。
-- [ ] 3.20 验证：从 HFish 入站到封禁闭环跑通，且字段缺失时可回退到 `extra_json`。
+- [x] 3.17 实现审批接口（Approve/Reject + 操作理由）。
+- [x] 3.18 审批通过后创建 `execution_task(QUEUED)`（幂等防重）。
+- [x] 3.19 实现执行器调用 `block_ip`、失败重试（指数退避）与 `MANUAL_REQUIRED`。
+- [x] 3.20 验证：从 HFish 入站到封禁闭环跑通，且字段缺失时可回退到 `extra_json`。
+
+### 当前问题与未来规划（TODO）
+- [ ] P-1 将 `backend/services/mcp_client.py` 从占位实现替换为真实 `stdio/sse` MCP 通信，补充失败分类（可重试/不可重试）。
+- [ ] P-2 将当前审批接口内同步执行的重试流程，重构为后台执行器（避免长请求阻塞），并保留 `QUEUED/RUNNING/RETRYING/SUCCESS/MANUAL_REQUIRED` 状态机。
+- [ ] P-3 补齐 Step 3.16：新增待审批列表接口（时间范围、风险分、来源、状态组合筛选）及分页排序。
+- [ ] P-4 收敛时间实现：清理 `datetime.utcnow()` 相关告警，统一为时区感知 UTC 时间。
+- [ ] P-5 收敛 Step 2 剩余项：完善 RBAC 权限点绑定（2.5）、前端路由守卫（2.6）、独立主动/被动模式开关入口（2.17）。
+- [ ] P-6 进入 Step 4 探测扫描链路开发（4.1-4.16），先打通资产 -> 任务 -> 结果最小闭环。
+
+### Step 4：探测扫描链路（待启动）
 
 - [ ] 4.1 设计资产模型字段（IP/CIDR、标签、优先级、启停状态）。
 - [ ] 4.2 实现资产新增接口（格式校验、重复校验、默认标签）。

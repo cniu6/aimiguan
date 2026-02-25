@@ -1,16 +1,19 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
-import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from core.database import init_db
-from core.response import http_exception_handler, validation_exception_handler, general_exception_handler
+from core.response import (
+    http_exception_handler,
+    validation_exception_handler,
+    general_exception_handler,
+)
 from core.middleware import TraceIDMiddleware
 from api import auth, defense, scan, report, ai_chat, tts, firewall, system
+
 
 def print_banner():
     banner = """
@@ -31,6 +34,7 @@ def print_banner():
     print("🚀 系统启动中...")
     print(f"⏰ 启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,11 +59,12 @@ async def lifespan(app: FastAPI):
     print("✓ 系统已安全退出")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
+
 app = FastAPI(
     title="Aimiguan API",
     description="AI-driven Security Operations Platform",
     version="0.1.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -82,11 +87,13 @@ app.include_router(auth.router)
 app.include_router(system.router)
 app.include_router(system.compat_router)  # /api/system/* compatibility
 app.include_router(defense.router)
+app.include_router(defense.compat_router)
 app.include_router(scan.router)
 app.include_router(report.router)
 app.include_router(ai_chat.router)
 app.include_router(tts.router)
 app.include_router(firewall.router)
+
 
 @app.get("/api/health")
 async def health_check():
@@ -95,14 +102,17 @@ async def health_check():
         "message": "OK",
         "data": {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat()
-        }
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        },
     }
+
 
 @app.get("/")
 async def root():
     return {"message": "Aimiguan API Server"}
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

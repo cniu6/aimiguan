@@ -3,22 +3,38 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 
 from core.database import get_db, User
-from api.auth import get_current_user, get_user_role
+from api.auth import get_current_user, get_user_role, get_user_permissions
 from services.audit_service import AuditService
+from services.mode_service import get_current_mode, set_mode
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 compat_router = APIRouter(prefix="/api/system", tags=["system"])
 
 # In-memory system mode (persisted via system_config_snapshot)
-_system_mode = {"mode": "PASSIVE", "reason": "系统初始化", "operator": "system", "updated_at": datetime.utcnow().isoformat()}
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _utc_iso() -> str:
+    return _utc_now().isoformat().replace("+00:00", "Z")
+
+
+_system_mode = {
+    "mode": "PASSIVE",
+    "reason": "系统初始化",
+    "operator": "system",
+    "updated_at": _utc_iso(),
+}
 
 APP_VERSION = os.getenv("APP_VERSION", "v0.1.0")
 GIT_COMMIT = os.getenv("GIT_COMMIT", "initial")
-BUILD_TIME = os.getenv("BUILD_TIME", datetime.utcnow().isoformat() + "Z")
+BUILD_TIME = os.getenv("BUILD_TIME", _utc_iso())
 ROLLBACK_CANDIDATE_LIMIT = int(os.getenv("ROLLBACK_CANDIDATE_LIMIT", "5"))
 
 
@@ -32,6 +48,14 @@ class SystemModeResponse(BaseModel):
     reason: Optional[str]
     operator: Optional[str]
     updated_at: str
+
+
+class SystemProfileResponse(BaseModel):
+    username: str
+    email: Optional[str]
+    full_name: Optional[str]
+    role: str
+    permissions: List[str]
 
 
 class RollbackRequest(BaseModel):
@@ -51,21 +75,23 @@ def _get_latest_schema_version(db: Session) -> str:
         text("""
         SELECT schema_version
         FROM release_history
-        ORDER BY datetime(created_at) DESC, id DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT 1
         """)
     ).fetchone()
     return latest[0] if latest else "unknown"
 
 
-def _get_available_versions(db: Session, limit: int = ROLLBACK_CANDIDATE_LIMIT) -> List[str]:
+def _get_available_versions(
+    db: Session, limit: int = ROLLBACK_CANDIDATE_LIMIT
+) -> List[str]:
     rows = db.execute(
         text("""
         SELECT version
         FROM release_history
         WHERE status IN ('active', 'deployed', 'rolled_back')
         GROUP BY version
-        ORDER BY MAX(datetime(created_at)) DESC
+        ORDER BY MAX(created_at) DESC
         LIMIT :limit
         """),
         {"limit": limit},
@@ -85,7 +111,7 @@ def _record_release_status(
     rollback_reason: Optional[str] = None,
     trace_id: Optional[str] = None,
 ):
-    now = datetime.utcnow()
+    now = _utc_iso()
     db.execute(
         text("""
         INSERT INTO release_history (
@@ -117,8 +143,10 @@ async def health_check():
 
 
 @router.get("/mode", response_model=SystemModeResponse)
-async def get_system_mode():
-    return SystemModeResponse(**_system_mode)
+async def get_system_mode(db: Session = Depends(get_db)):
+    deploy_env = os.getenv("APP_ENV", "dev")
+    mode = get_current_mode(db, deploy_env)
+    return SystemModeResponse(**mode)
 
 
 @router.post("/mode", response_model=SystemModeResponse)
@@ -126,31 +154,41 @@ async def set_system_mode(
     request: SystemModeRequest,
     req: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     if request.mode not in ["PASSIVE", "ACTIVE"]:
         raise HTTPException(status_code=400, detail="模式必须是 PASSIVE 或 ACTIVE")
 
-    global _system_mode
-    _system_mode = {
-        "mode": request.mode,
-        "reason": request.reason,
-        "operator": current_user.username,
-        "updated_at": datetime.utcnow().isoformat()
-    }
-
+    deploy_env = os.getenv("APP_ENV", "dev")
     trace_id = getattr(req.state, "trace_id", None)
-    AuditService.log(
+    mode_data = set_mode(
         db=db,
-        actor=current_user.username,
-        action=f"set_mode:{request.mode}",
-        target="system_mode",
-        target_type="system",
-        result="success",
-        trace_id=trace_id
+        mode=request.mode,
+        reason=request.reason,
+        operator=str(current_user.username),
+        env=deploy_env,
+        trace_id=trace_id,
     )
+    global _system_mode
+    _system_mode = mode_data
+    return SystemModeResponse(**mode_data)
 
-    return SystemModeResponse(**_system_mode)
+
+@router.get("/profile", response_model=SystemProfileResponse)
+@compat_router.get("/profile", response_model=SystemProfileResponse)
+async def get_system_profile(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    role = get_user_role(current_user, db)
+    permissions = get_user_permissions(current_user, db)
+    return SystemProfileResponse(
+        username=str(current_user.username),
+        email=str(current_user.email) if current_user.email else None,
+        full_name=str(current_user.full_name) if current_user.full_name else None,
+        role=role,
+        permissions=permissions,
+    )
 
 
 @router.get("/version")
@@ -196,7 +234,7 @@ async def rollback_system(
         SELECT version, git_commit, schema_version
         FROM release_history
         WHERE version = :version
-        ORDER BY datetime(created_at) DESC, id DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT 1
         """),
         {"version": payload.target_version},
@@ -220,7 +258,7 @@ async def rollback_system(
             schema_version=target[2],
             deploy_env=deploy_env,
             status="active",
-            deployed_by=current_user.username,
+            deployed_by=str(current_user.username),
             rollback_reason=payload.reason,
             trace_id=trace_id,
         )
@@ -239,7 +277,7 @@ async def rollback_system(
 
     AuditService.log(
         db=db,
-        actor=current_user.username,
+        actor=str(current_user.username),
         action="system_rollback",
         target=payload.target_version,
         target_type="release",

@@ -1,14 +1,34 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Float
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
-from datetime import datetime
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    Text,
+    DateTime,
+    ForeignKey,
+    Float,
+)
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from datetime import datetime, timezone
+import sqlite3
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./aimiguard.db")
 
+
+def _adapt_datetime(value: datetime) -> str:
+    if value.tzinfo is not None:
+        value = value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value.isoformat(sep=" ")
+
+
+sqlite3.register_adapter(datetime, _adapt_datetime)
+
+
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
 
 def get_db():
     db = SessionLocal()
@@ -17,7 +37,9 @@ def get_db():
     finally:
         db.close()
 
+
 # ── Core Business ──
+
 
 class ThreatEvent(Base):
     __tablename__ = "threat_event"
@@ -43,6 +65,7 @@ class ThreatEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class Asset(Base):
     __tablename__ = "asset"
     id = Column(Integer, primary_key=True, index=True)
@@ -54,6 +77,7 @@ class Asset(Base):
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
 class ExecutionTask(Base):
     __tablename__ = "execution_task"
@@ -69,6 +93,7 @@ class ExecutionTask(Base):
     trace_id = Column(String, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
 class ScanTask(Base):
     __tablename__ = "scan_task"
@@ -91,6 +116,7 @@ class ScanTask(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class ScanFinding(Base):
     __tablename__ = "scan_finding"
     id = Column(Integer, primary_key=True, index=True)
@@ -107,6 +133,7 @@ class ScanFinding(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class Device(Base):
     __tablename__ = "device"
     id = Column(Integer, primary_key=True, index=True)
@@ -120,6 +147,7 @@ class Device(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class Credential(Base):
     __tablename__ = "credential"
     id = Column(Integer, primary_key=True, index=True)
@@ -129,6 +157,7 @@ class Credential(Base):
     key_version = Column(String, default="v1")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
+
 
 class AIDecisionLog(Base):
     __tablename__ = "ai_decision_log"
@@ -145,6 +174,7 @@ class AIDecisionLog(Base):
     trace_id = Column(String, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
 class AIChatSession(Base):
     __tablename__ = "ai_chat_session"
     id = Column(Integer, primary_key=True, index=True)
@@ -155,6 +185,7 @@ class AIChatSession(Base):
     ended_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
 class AIChatMessage(Base):
     __tablename__ = "ai_chat_message"
     id = Column(Integer, primary_key=True, index=True)
@@ -163,6 +194,7 @@ class AIChatMessage(Base):
     content = Column(Text, nullable=False)
     evidence_refs = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+
 
 class AIReport(Base):
     __tablename__ = "ai_report"
@@ -174,6 +206,7 @@ class AIReport(Base):
     format = Column(String, default="markdown")
     trace_id = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
 
 class AITTSTask(Base):
     __tablename__ = "ai_tts_task"
@@ -189,6 +222,7 @@ class AITTSTask(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class PluginRegistry(Base):
     __tablename__ = "plugin_registry"
     id = Column(Integer, primary_key=True, index=True)
@@ -200,6 +234,7 @@ class PluginRegistry(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class PushChannel(Base):
     __tablename__ = "push_channel"
     id = Column(Integer, primary_key=True, index=True)
@@ -210,6 +245,7 @@ class PushChannel(Base):
     enabled = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
 class FirewallSyncTask(Base):
     __tablename__ = "firewall_sync_task"
@@ -227,6 +263,7 @@ class FirewallSyncTask(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class ModelProfile(Base):
     __tablename__ = "model_profile"
     id = Column(Integer, primary_key=True, index=True)
@@ -240,7 +277,9 @@ class ModelProfile(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 # ── RBAC ──
+
 
 class Role(Base):
     __tablename__ = "role"
@@ -250,6 +289,7 @@ class Role(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class Permission(Base):
     __tablename__ = "permission"
     id = Column(Integer, primary_key=True, index=True)
@@ -258,6 +298,7 @@ class Permission(Base):
     action = Column(String)
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+
 
 class UserRole(Base):
     __tablename__ = "user_role"
@@ -270,12 +311,14 @@ class UserRole(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class RolePermission(Base):
     __tablename__ = "role_permission"
     id = Column(Integer, primary_key=True, index=True)
     role_id = Column(Integer, ForeignKey("role.id"), nullable=False)
     permission_id = Column(Integer, ForeignKey("permission.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
 
 class User(Base):
     __tablename__ = "user"
@@ -289,7 +332,9 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     user_roles = relationship("UserRole", backref="user", lazy="joined")
 
+
 # ── System Management ──
+
 
 class ReleaseHistory(Base):
     __tablename__ = "release_history"
@@ -305,7 +350,21 @@ class ReleaseHistory(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
+class SystemConfigSnapshot(Base):
+    __tablename__ = "system_config_snapshot"
+    id = Column(Integer, primary_key=True, index=True)
+    config_key = Column(String, nullable=False, index=True)
+    config_value = Column(Text)
+    source = Column(String, nullable=False)
+    is_sensitive = Column(Integer, nullable=False, default=0)
+    env = Column(String, nullable=False, index=True)
+    loaded_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ── Audit ──
+
 
 class AuditLog(Base):
     __tablename__ = "audit_log"
@@ -320,6 +379,7 @@ class AuditLog(Base):
     error_message = Column(Text)
     trace_id = Column(String, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
 
 def init_db():
     Base.metadata.create_all(bind=engine)

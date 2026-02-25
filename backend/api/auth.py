@@ -1,27 +1,37 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 import hashlib
 import os
 
-from core.database import get_db, User, Role, UserRole
+from core.database import (
+    get_db,
+    User,
+    Role,
+    UserRole,
+    Permission,
+    RolePermission,
+)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 security = HTTPBearer()
+BLACKLISTED_TOKENS: set[str] = set()
 
 SECRET_KEY = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
 
+
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
+
 def verify_password(plain: str, hashed: str) -> bool:
     return hash_password(plain) == hashed
+
 
 def get_user_role(user: User, db: Session) -> str:
     """Get user's primary role name"""
@@ -29,81 +39,115 @@ def get_user_role(user: User, db: Session) -> str:
     if user_role:
         role = db.query(Role).filter(Role.id == user_role.role_id).first()
         if role:
-            return role.name
+            return str(role.name)
     return "viewer"
+
+
+def get_user_permissions(user: User, db: Session) -> list[str]:
+    rows = (
+        db.query(Permission.name)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .join(UserRole, UserRole.role_id == RolePermission.role_id)
+        .filter(UserRole.user_id == user.id)
+        .all()
+    )
+    names = {str(row[0]) for row in rows if row and row[0]}
+    return sorted(names)
+
 
 class LoginRequest(BaseModel):
     username: str
     password: str
+
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: dict
 
+
 class UserInfo(BaseModel):
     username: str
     role: str
+
 
 @router.post("/login", response_model=TokenResponse)
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
     if not request.username or not request.password:
         raise HTTPException(status_code=400, detail="用户名和密码不能为空")
-    
+
     user = db.query(User).filter(User.username == request.username.strip()).first()
-    if not user or not user.enabled:
+    if user is None or getattr(user, "enabled", 0) != 1:
         raise HTTPException(status_code=401, detail="用户名或密码错误")
-    
-    if not verify_password(request.password, user.password_hash):
+
+    if not verify_password(request.password, str(user.password_hash)):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
-    
+
     role = get_user_role(user, db)
     token_data = {
         "sub": user.username,
         "role": role,
-        "exp": datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        "exp": datetime.now(timezone.utc)
+        + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     }
     access_token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
-    
+
     return TokenResponse(
-        access_token=access_token,
-        user={"username": user.username, "role": role}
+        access_token=access_token, user={"username": user.username, "role": role}
     )
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)) -> User:
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+) -> User:
     try:
         token = credentials.credentials
+        if token in BLACKLISTED_TOKENS:
+            raise HTTPException(status_code=40102, detail="令牌已失效，请重新登录")
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        username = payload.get("sub")
+        if not isinstance(username, str) or not username:
             raise HTTPException(status_code=40102, detail="无效的认证令牌")
     except JWTError:
         raise HTTPException(status_code=40102, detail="无效的认证令牌")
-    
+
     user = db.query(User).filter(User.username == username).first()
-    if user is None or not user.enabled:
+    if user is None or getattr(user, "enabled", 0) != 1:
         raise HTTPException(status_code=40102, detail="用户不存在或已禁用")
     return user
 
+
 @router.post("/refresh")
-async def refresh_token(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def refresh_token(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
     role = get_user_role(current_user, db)
     token_data = {
         "sub": current_user.username,
         "role": role,
-        "exp": datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        "exp": datetime.now(timezone.utc)
+        + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     }
     access_token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
     return TokenResponse(
         access_token=access_token,
-        user={"username": current_user.username, "role": role}
+        user={"username": current_user.username, "role": role},
     )
 
+
 @router.post("/logout")
-async def logout(current_user: User = Depends(get_current_user)):
+async def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    current_user: User = Depends(get_current_user),
+):
+    BLACKLISTED_TOKENS.add(credentials.credentials)
     return {"code": 0, "message": "退出登录成功"}
 
+
 @router.get("/profile", response_model=UserInfo)
-async def get_profile(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_profile(
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
     role = get_user_role(current_user, db)
-    return UserInfo(username=current_user.username, role=role)
+    return UserInfo(username=str(current_user.username), role=role)

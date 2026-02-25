@@ -1,7 +1,9 @@
 from sqlalchemy.orm import Session
 from core.database import AuditLog
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional
 import uuid
+
 
 class AuditService:
     @staticmethod
@@ -11,11 +13,12 @@ class AuditService:
         action: str,
         target: str,
         result: str = "success",
-        target_type: str = None,
-        target_ip: str = None,
-        reason: str = None,
-        error_message: str = None,
-        trace_id: str = None
+        target_type: Optional[str] = None,
+        target_ip: Optional[str] = None,
+        reason: Optional[str] = None,
+        error_message: Optional[str] = None,
+        trace_id: Optional[str] = None,
+        auto_commit: bool = True,
     ):
         """统一审计日志写入"""
         audit = AuditLog(
@@ -28,8 +31,9 @@ class AuditService:
             result=result,
             error_message=error_message,
             trace_id=trace_id or str(uuid.uuid4()),
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
         )
         db.add(audit)
-        db.commit()
+        if auto_commit:
+            db.commit()
         return audit
