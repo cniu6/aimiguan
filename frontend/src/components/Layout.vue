@@ -43,9 +43,23 @@
             class="hidden md:flex"
             @update:model-value="onModeChange"
           >
-            <TabsList class="h-9 bg-muted">
-              <TabsTrigger value="defense" class="cursor-pointer px-3 text-xs sm:text-sm">防御坚守</TabsTrigger>
-              <TabsTrigger value="probe" class="cursor-pointer px-3 text-xs sm:text-sm">主动探测</TabsTrigger>
+            <TabsList class="h-9 w-auto bg-muted/50 p-1 rounded-lg gap-1">
+              <TabsTrigger 
+                value="defense" 
+                class="cursor-pointer px-3 text-xs sm:text-sm rounded-md transition-all duration-500 
+                data-[state=active]:!bg-[#3B82F6] data-[state=active]:!text-white data-[state=active]:shadow-sm
+                hover:text-[#3B82F6] data-[state=active]:hover:text-white"
+              >
+                防御坚守
+              </TabsTrigger>
+              <TabsTrigger 
+                value="probe" 
+                class="cursor-pointer px-3 text-xs sm:text-sm rounded-md transition-all duration-500 
+                data-[state=active]:!bg-[#F97316] data-[state=active]:!text-white data-[state=active]:shadow-sm
+                hover:text-[#F97316] data-[state=active]:hover:text-white"
+              >
+                主动探测
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -108,9 +122,23 @@
 
       <div class="border-t border-border px-4 py-2 md:hidden">
         <Tabs :model-value="activeMode" @update:model-value="onModeChange">
-          <TabsList class="grid w-full grid-cols-2 bg-muted">
-            <TabsTrigger value="defense" class="cursor-pointer">防御坚守</TabsTrigger>
-            <TabsTrigger value="probe" class="cursor-pointer">主动探测</TabsTrigger>
+          <TabsList class="grid w-full grid-cols-2 bg-muted/50 p-1 rounded-lg gap-1">
+            <TabsTrigger 
+              value="defense" 
+              class="cursor-pointer rounded-md transition-all duration-500 
+              data-[state=active]:!bg-[#3B82F6] data-[state=active]:!text-white data-[state=active]:shadow-sm
+              hover:text-[#3B82F6] data-[state=active]:hover:text-white"
+            >
+              防御坚守
+            </TabsTrigger>
+            <TabsTrigger 
+              value="probe" 
+              class="cursor-pointer rounded-md transition-all duration-500 
+              data-[state=active]:!bg-[#F97316] data-[state=active]:!text-white data-[state=active]:shadow-sm
+              hover:text-[#F97316] data-[state=active]:hover:text-white"
+            >
+              主动探测
+            </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -143,10 +171,15 @@
         :style="{ width: `${sidebarCurrentWidth}px` }"
       >
         <div
-          class="mb-3 rounded-md border border-sidebar-border/80 bg-sidebar-accent/40 transition-all duration-200"
-          :class="sidebarCollapsed ? 'px-2 py-2 text-center' : 'px-3 py-2'"
+          class="mb-3 rounded-md border transition-all duration-300 backdrop-blur-sm bg-background/60"
+          :class="[
+            sidebarCollapsed ? 'px-2 py-2 text-center' : 'px-3 py-2',
+            activeMode === 'defense' 
+              ? 'border-blue-500 text-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.1)]' 
+              : 'border-orange-500 text-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.1)]'
+          ]"
         >
-          <p class="font-medium tracking-wide text-sidebar-foreground/90" :class="sidebarCollapsed ? 'text-[11px]' : 'text-xs'">
+          <p class="font-medium tracking-wide" :class="sidebarCollapsed ? 'text-[11px]' : 'text-xs'">
             {{ sidebarCollapsed ? (activeMode === 'defense' ? '防御' : '探测') : activeModeLabel }}
           </p>
         </div>
