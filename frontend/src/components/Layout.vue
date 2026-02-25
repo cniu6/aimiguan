@@ -2,7 +2,7 @@
   <Transition name="route-progress">
     <div v-if="isRouteChanging" class="route-progress" :style="{ transform: `scaleX(${routeProgress})` }" />
   </Transition>
-  <div ref="shellRef" class="flex h-screen flex-col bg-background text-foreground">
+  <div ref="shellRef" class="flex h-screen flex-col bg-background/50 text-foreground">
     <header class="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div class="flex h-14 items-center px-4 sm:px-6">
         <div class="flex items-center gap-3">
@@ -151,7 +151,7 @@
           v-for="panelIndex in maskPanels"
           :key="`mask-panel-${panelIndex}`"
           :ref="setMaskPanelRef"
-          class="h-full flex-1 bg-background border-r border-border/50 last:border-r-0 origin-top"
+          class="h-full flex-1 bg-background/50 border-r border-border/50 last:border-r-0 origin-top"
         />
         <div ref="inkTopRef" class="absolute top-[30%] left-0 h-0.5 w-full bg-primary shadow-[0_0_15px_var(--primary)] opacity-0" />
         <div ref="inkBottomRef" class="absolute bottom-[30%] left-0 h-0.5 w-full bg-primary shadow-[0_0_15px_var(--primary)] opacity-0" />
@@ -229,7 +229,7 @@
 
       <main
         ref="contentRef"
-        class="min-w-0 flex-1 overflow-y-auto bg-background"
+        class="min-w-0 flex-1 overflow-y-auto bg-background/50"
       >
         <div
           class="relative h-full transition-[opacity,transform,filter] duration-300 ease-out"

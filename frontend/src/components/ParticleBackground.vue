@@ -3,12 +3,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 
+const route = useRoute()
 const canvas = ref<HTMLCanvasElement>()
 let ctx: CanvasRenderingContext2D | null = null
 let particles: Particle[] = []
 let animationId: number
+
+const isProbeMode = computed(() => route.path.startsWith('/probe'))
 
 interface Particle {
   x: number
@@ -46,9 +50,8 @@ function animate() {
   
   ctx.clearRect(0, 0, canvas.value.width, canvas.value.height)
   
-  const isDark = document.documentElement.classList.contains('dark')
-  const particleColor = isDark ? 'rgba(59, 130, 246, 0.6)' : 'rgba(59, 130, 246, 0.4)'
-  const lineColor = isDark ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.1)'
+  const particleColor = isProbeMode.value ? 'rgba(249, 115, 22, 0.6)' : 'rgba(59, 130, 246, 0.6)'
+  const lineColor = isProbeMode.value ? 'rgba(249, 115, 22, 0.15)' : 'rgba(59, 130, 246, 0.15)'
   
   particles.forEach((p, i) => {
     p.x += p.vx
