@@ -248,6 +248,7 @@ class Role(Base):
     name = Column(String, unique=True, nullable=False)
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class Permission(Base):
     __tablename__ = "permission"
@@ -256,19 +257,25 @@ class Permission(Base):
     resource = Column(String)
     action = Column(String)
     description = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class UserRole(Base):
     __tablename__ = "user_role"
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False)
     role_id = Column(Integer, ForeignKey("role.id"), nullable=False)
+    granted_by = Column(String)
+    reason = Column(Text)
+    trace_id = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class RolePermission(Base):
     __tablename__ = "role_permission"
     id = Column(Integer, primary_key=True, index=True)
     role_id = Column(Integer, ForeignKey("role.id"), nullable=False)
     permission_id = Column(Integer, ForeignKey("permission.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class User(Base):
     __tablename__ = "user"
@@ -281,6 +288,22 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     user_roles = relationship("UserRole", backref="user", lazy="joined")
+
+# ── System Management ──
+
+class ReleaseHistory(Base):
+    __tablename__ = "release_history"
+    id = Column(Integer, primary_key=True, index=True)
+    version = Column(String, nullable=False)
+    git_commit = Column(String, nullable=False)
+    schema_version = Column(String, nullable=False)
+    deploy_env = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    deployed_by = Column(String)
+    rollback_reason = Column(Text)
+    trace_id = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # ── Audit ──
 

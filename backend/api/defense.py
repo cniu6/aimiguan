@@ -6,8 +6,10 @@ from datetime import datetime
 import uuid
 
 from core.database import get_db, ThreatEvent, ExecutionTask
+from services.ai_engine import ai_engine
+from services.mcp_client import mcp_client
 
-router = APIRouter(prefix="/api/v1/defense", tags=["defense"])
+router = APIRouter()
 
 class HFishAlert(BaseModel):
     ip: str
@@ -73,7 +75,7 @@ async def approve_event(event_id: int, req: ApproveRequest, request: Request, db
     event.status = "APPROVED"
     event.updated_at = datetime.utcnow()
     
-    # TODO: Trigger MCP client to block IP
+    # Trigger MCP client to block IP
     trace_id = getattr(request.state, "trace_id", str(uuid.uuid4()))
     task = ExecutionTask(
         event_id=event_id,
@@ -81,8 +83,11 @@ async def approve_event(event_id: int, req: ApproveRequest, request: Request, db
         state="QUEUED",
         trace_id=trace_id
     )
+    # TODO: Implement retry policy and device sequencing
+    # For now: create task and update event status
     db.add(task)
     db.commit()
+    db.refresh(task)
     
     return {"code": 0, "message": "Event approved", "data": {"task_id": task.id}}
 

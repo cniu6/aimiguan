@@ -80,6 +80,7 @@ app.add_exception_handler(Exception, general_exception_handler)
 # Register API routers
 app.include_router(auth.router)
 app.include_router(system.router)
+app.include_router(system.compat_router)  # /api/system/* compatibility
 app.include_router(defense.router)
 app.include_router(scan.router)
 app.include_router(report.router)
