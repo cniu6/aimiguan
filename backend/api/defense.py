@@ -631,7 +631,9 @@ async def receive_alert(
             )
             if existing:
                 if existing.id is not None:
-                    deduped_event_ids.append(int(existing.id))
+                    existing_id = _safe_int(getattr(existing, "id", None), 0)
+                    if existing_id > 0:
+                        deduped_event_ids.append(existing_id)
                 continue
 
             event_payload = await _enrich_with_ai_assessment(event_payload)
@@ -639,7 +641,9 @@ async def receive_alert(
             db.add(event)
             db.flush()
             if event.id is not None:
-                ingested_event_ids.append(int(event.id))
+                event_id = _safe_int(getattr(event, "id", None), 0)
+                if event_id > 0:
+                    ingested_event_ids.append(event_id)
 
         db.commit()
     except Exception as exc:
@@ -724,6 +728,161 @@ async def get_events(status: Optional[str] = None, db: Session = Depends(get_db)
         query = query.filter(ThreatEvent.status == status)
     events = query.order_by(ThreatEvent.created_at.desc()).limit(100).all()
     return events
+
+
+def _parse_filter_time(value: Optional[str], field_name: str) -> Optional[datetime]:
+    if value is None:
+        return None
+    parsed = _parse_hfish_time(value)
+    if parsed is None:
+        raise HTTPException(
+            status_code=40000,
+            detail=f"invalid {field_name}, expected ISO8601 or '%Y-%m-%d %H:%M:%S'",
+        )
+    return parsed
+
+
+def _serialize_threat_event(event: ThreatEvent) -> Dict[str, Any]:
+    created_at = getattr(event, "created_at", None)
+    updated_at = getattr(event, "updated_at", None)
+    return {
+        "id": _safe_int(getattr(event, "id", 0), 0),
+        "ip": str(getattr(event, "ip", "") or ""),
+        "source": str(getattr(event, "source", "") or ""),
+        "source_vendor": getattr(event, "source_vendor", None),
+        "source_type": getattr(event, "source_type", None),
+        "ai_score": getattr(event, "ai_score", None),
+        "ai_reason": getattr(event, "ai_reason", None),
+        "action_suggest": getattr(event, "action_suggest", None),
+        "status": str(getattr(event, "status", "") or ""),
+        "trace_id": str(getattr(event, "trace_id", "") or ""),
+        "created_at": _iso_z(created_at) if isinstance(created_at, datetime) else None,
+        "updated_at": _iso_z(updated_at) if isinstance(updated_at, datetime) else None,
+    }
+
+
+@router.get("/pending")
+@compat_router.get("/pending", include_in_schema=False)
+async def get_pending_events(
+    request: Request,
+    status: str = "PENDING",
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    min_score: Optional[int] = None,
+    max_score: Optional[int] = None,
+    risk_level: Optional[str] = None,
+    source: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+    db: Session = Depends(get_db),
+):
+    """获取待审批事件列表（支持状态、时间、风险筛选与分页排序）"""
+    if page < 1:
+        raise HTTPException(status_code=40000, detail="page must be >= 1")
+    if page_size < 1 or page_size > 100:
+        raise HTTPException(
+            status_code=40000, detail="page_size must be between 1 and 100"
+        )
+
+    parsed_start_time = _parse_filter_time(start_time, "start_time")
+    parsed_end_time = _parse_filter_time(end_time, "end_time")
+    if parsed_start_time and parsed_end_time and parsed_start_time > parsed_end_time:
+        raise HTTPException(status_code=40000, detail="start_time must be <= end_time")
+
+    if min_score is not None and (min_score < 0 or min_score > 100):
+        raise HTTPException(
+            status_code=40000, detail="min_score must be between 0 and 100"
+        )
+    if max_score is not None and (max_score < 0 or max_score > 100):
+        raise HTTPException(
+            status_code=40000, detail="max_score must be between 0 and 100"
+        )
+    if min_score is not None and max_score is not None and min_score > max_score:
+        raise HTTPException(status_code=40000, detail="min_score must be <= max_score")
+
+    normalized_risk_level: Optional[str] = None
+    if risk_level is not None:
+        normalized_risk_level = str(risk_level).strip().upper()
+        if normalized_risk_level not in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}:
+            raise HTTPException(
+                status_code=40000,
+                detail="risk_level must be one of LOW, MEDIUM, HIGH, CRITICAL",
+            )
+
+    normalized_sort_by = str(sort_by).strip()
+    sort_field_map = {
+        "created_at": ThreatEvent.created_at,
+        "updated_at": ThreatEvent.updated_at,
+        "ai_score": ThreatEvent.ai_score,
+        "ip": ThreatEvent.ip,
+        "status": ThreatEvent.status,
+    }
+    if normalized_sort_by not in sort_field_map:
+        raise HTTPException(
+            status_code=40000,
+            detail="sort_by must be one of created_at, updated_at, ai_score, ip, status",
+        )
+
+    normalized_sort_order = str(sort_order).strip().lower()
+    if normalized_sort_order not in {"asc", "desc"}:
+        raise HTTPException(status_code=40000, detail="sort_order must be asc or desc")
+
+    query = db.query(ThreatEvent)
+    normalized_status = str(status or "").strip().upper()
+    if normalized_status:
+        query = query.filter(ThreatEvent.status == normalized_status)
+
+    if parsed_start_time is not None:
+        query = query.filter(ThreatEvent.created_at >= parsed_start_time)
+    if parsed_end_time is not None:
+        query = query.filter(ThreatEvent.created_at <= parsed_end_time)
+
+    if source is not None and str(source).strip():
+        query = query.filter(ThreatEvent.source == str(source).strip())
+
+    if normalized_risk_level is not None:
+        risk_ranges = {
+            "LOW": (0, 39),
+            "MEDIUM": (40, 69),
+            "HIGH": (70, 89),
+            "CRITICAL": (90, 100),
+        }
+        level_min, level_max = risk_ranges[normalized_risk_level]
+        query = query.filter(
+            ThreatEvent.ai_score >= level_min, ThreatEvent.ai_score <= level_max
+        )
+
+    if min_score is not None:
+        query = query.filter(ThreatEvent.ai_score >= min_score)
+    if max_score is not None:
+        query = query.filter(ThreatEvent.ai_score <= max_score)
+
+    total = query.count()
+    sort_column = sort_field_map[normalized_sort_by]
+    if normalized_sort_order == "asc":
+        query = query.order_by(sort_column.asc())
+    else:
+        query = query.order_by(sort_column.desc())
+
+    offset = (page - 1) * page_size
+    records = query.offset(offset).limit(page_size).all()
+    items = [_serialize_threat_event(record) for record in records]
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+
+    return {
+        "code": 0,
+        "message": "Pending events fetched",
+        "data": {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        },
+        "trace_id": getattr(request.state, "trace_id", None),
+    }
 
 
 @router.post("/events/{event_id}/approve")

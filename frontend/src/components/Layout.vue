@@ -64,6 +64,21 @@
           </Tabs>
         </div>
 
+        <div class="hidden items-center gap-2 lg:flex">
+          <span class="rounded-md border border-border bg-muted/50 px-2 py-1 text-[11px] text-muted-foreground">
+            运行模式：{{ runtimeModeLabel }}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            class="cursor-pointer text-xs"
+            :disabled="runtimeModeLoading"
+            @click="openRuntimeModeDialog(runtimeMode === 'ACTIVE' ? 'PASSIVE' : 'ACTIVE')"
+          >
+            {{ runtimeMode === 'ACTIVE' ? '切换到被动' : '切换到主动' }}
+          </Button>
+        </div>
+
         <div class="flex items-center gap-2">
           <Sheet>
             <SheetTrigger as-child>
@@ -321,6 +336,58 @@
       </main>
     </div>
 
+    <Dialog v-model:open="modeDialogOpen">
+      <DialogContent class="sm:max-w-[460px]">
+        <DialogHeader>
+          <DialogTitle>切换系统运行模式</DialogTitle>
+          <DialogDescription>
+            该操作会切换后端运行策略并写入审计日志，不影响当前页面浏览。
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-3 pt-2">
+          <p class="text-xs text-muted-foreground">
+            当前模式：<span class="font-medium text-foreground">{{ runtimeModeLabel }}</span>
+          </p>
+          <p class="text-xs text-muted-foreground">
+            目标模式：<span class="font-medium text-foreground">{{ pendingRuntimeModeLabel }}</span>
+          </p>
+
+          <div class="space-y-2">
+            <Label for="runtime-reason">切换原因（必填）</Label>
+            <Input
+              id="runtime-reason"
+              v-model="modeSwitchReason"
+              placeholder="例如：应急处置期间切换为主动模式"
+              maxlength="120"
+            />
+          </div>
+
+          <p v-if="runtimeModeError" class="text-xs text-destructive">{{ runtimeModeError }}</p>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            type="button"
+            class="cursor-pointer"
+            :disabled="runtimeModeLoading"
+            @click="modeDialogOpen = false"
+          >
+            取消
+          </Button>
+          <Button
+            type="button"
+            class="cursor-pointer"
+            :disabled="runtimeModeLoading"
+            @click="submitRuntimeModeSwitch"
+          >
+            {{ runtimeModeLoading ? '切换中...' : '确认切换' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
   </div>
 </template>
 
@@ -329,10 +396,13 @@ import { computed, nextTick, onBeforeUpdate, onMounted, onUnmounted, ref, watch 
 import type { ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '../api/auth'
+import { systemApi } from '../api/system'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -342,6 +412,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import gsap from 'gsap'
 import {
   Activity,
@@ -372,6 +450,12 @@ const notifications = ref([
   { id: 'n-2', title: '审计任务完成', content: '最近一次导出任务已完成。', time: '5 分钟前', read: false },
   { id: 'n-3', title: '扫描任务提示', content: '存在待确认扫描结果。', time: '15 分钟前', read: true },
 ])
+const runtimeMode = ref<'ACTIVE' | 'PASSIVE'>('PASSIVE')
+const runtimeModeLoading = ref(false)
+const modeDialogOpen = ref(false)
+const modeSwitchReason = ref('')
+const pendingRuntimeMode = ref<'ACTIVE' | 'PASSIVE'>('ACTIVE')
+const runtimeModeError = ref('')
 const shellRef = ref<HTMLElement | null>(null)
 const sidebarRef = ref<HTMLElement | null>(null)
 
@@ -622,14 +706,22 @@ onBeforeUpdate(() => {
 
 const sidebarMap: Record<ModeKey, { to: string; label: string; icon: unknown }[]> = {
   defense: [
+    { to: '/overview', label: '总览', icon: Activity },
     { to: '/defense/realtime', label: '实时检测', icon: Activity },
     { to: '/defense/events', label: '威胁处置', icon: ShieldAlert },
     { to: '/defense/ai', label: 'AI 研判', icon: BrainCircuit },
+    { to: '/integrations', label: '插件与联动', icon: Settings },
+    { to: '/audit', label: '审计中心', icon: ShieldAlert },
+    { to: '/settings', label: '系统设置', icon: Settings },
   ],
   probe: [
+    { to: '/overview', label: '总览', icon: Activity },
     { to: '/probe/realtime', label: '实时检测', icon: Radar },
     { to: '/probe/scan', label: '扫描管理', icon: ScanSearch },
     { to: '/probe/ai', label: 'AI 分析', icon: BrainCircuit },
+    { to: '/integrations', label: '插件与联动', icon: Settings },
+    { to: '/audit', label: '审计中心', icon: ShieldAlert },
+    { to: '/settings', label: '系统设置', icon: Settings },
   ],
 }
 
@@ -652,6 +744,9 @@ const roleText = computed(() => {
 const roleBadgeVariant = computed(() => {
   return role.value === 'admin' ? ('default' as const) : ('secondary' as const)
 })
+
+const runtimeModeLabel = computed(() => (runtimeMode.value === 'ACTIVE' ? '主动' : '被动'))
+const pendingRuntimeModeLabel = computed(() => (pendingRuntimeMode.value === 'ACTIVE' ? '主动' : '被动'))
 
 const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read).length)
 
@@ -935,6 +1030,51 @@ const goToProfile = () => {
   router.push('/profile')
 }
 
+const loadRuntimeMode = async () => {
+  runtimeModeLoading.value = true
+  runtimeModeError.value = ''
+  try {
+    const mode = await systemApi.getMode()
+    runtimeMode.value = mode.mode
+  } catch (error) {
+    console.error('Failed to load runtime mode:', error)
+    runtimeModeError.value = '运行模式读取失败，请稍后重试'
+  } finally {
+    runtimeModeLoading.value = false
+  }
+}
+
+const openRuntimeModeDialog = (targetMode: 'ACTIVE' | 'PASSIVE') => {
+  pendingRuntimeMode.value = targetMode
+  modeSwitchReason.value = ''
+  runtimeModeError.value = ''
+  modeDialogOpen.value = true
+}
+
+const submitRuntimeModeSwitch = async () => {
+  const reason = modeSwitchReason.value.trim()
+  if (!reason) {
+    runtimeModeError.value = '请填写切换原因'
+    return
+  }
+
+  runtimeModeLoading.value = true
+  runtimeModeError.value = ''
+  try {
+    const updated = await systemApi.setMode({
+      mode: pendingRuntimeMode.value,
+      reason,
+    })
+    runtimeMode.value = updated.mode
+    modeDialogOpen.value = false
+  } catch (error) {
+    console.error('Failed to switch runtime mode:', error)
+    runtimeModeError.value = '模式切换失败，请检查权限或后端状态'
+  } finally {
+    runtimeModeLoading.value = false
+  }
+}
+
 // 路由进度条逻辑
 let progressTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -962,6 +1102,7 @@ watch(() => route.fullPath, () => {
 onMounted(() => {
   initTheme()
   loadSidebarPreference()
+  void loadRuntimeMode()
   sidebarAnimatedWidth.value = getSidebarTargetWidth()
 
   const userInfo = localStorage.getItem('user_info')

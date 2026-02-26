@@ -382,3 +382,103 @@ def test_approve_event_block_retry_to_manual_required(monkeypatch):
         assert event_row[0] == "FAILED"
     finally:
         db.close()
+
+
+def test_pending_events_filter_pagination_and_sorting():
+    payload = {
+        "response_code": 0,
+        "response_message": "ok",
+        "list_infos": [
+            {
+                "client_id": "pending-source-low",
+                "client_ip": "10.0.1.10",
+                "service_name": "pending-filter-service",
+                "service_type": "ssh",
+                "attack_ip": "11.11.11.11",
+                "attack_count": 1,
+                "last_attack_time": "2026-02-26 08:00:00",
+                "labels": "probe",
+                "labels_cn": "探测",
+                "is_white": 0,
+                "intranet": 0,
+            },
+            {
+                "client_id": "pending-source-high",
+                "client_ip": "10.0.1.11",
+                "service_name": "pending-filter-service",
+                "service_type": "ssh",
+                "attack_ip": "22.22.22.22",
+                "attack_count": 4,
+                "last_attack_time": "2026-02-26 08:10:00",
+                "labels": "bruteforce",
+                "labels_cn": "暴力破解",
+                "is_white": 0,
+                "intranet": 0,
+            },
+        ],
+        "attack_infos": [],
+        "attack_trend": [],
+    }
+
+    ingest_resp = client.post("/alerts", json=payload)
+    assert ingest_resp.status_code == 200
+    assert ingest_resp.json()["code"] == 0
+
+    high_filter_resp = client.get(
+        "/api/v1/defense/pending",
+        params={
+            "status": "PENDING",
+            "source": "pending-filter-service",
+            "min_score": 80,
+            "start_time": "2026-02-26T08:05:00Z",
+            "end_time": "2026-02-26T08:20:00Z",
+            "page": 1,
+            "page_size": 10,
+            "sort_by": "ai_score",
+            "sort_order": "desc",
+        },
+    )
+    assert high_filter_resp.status_code == 200
+    high_body = high_filter_resp.json()
+    assert high_body["code"] == 0
+    assert high_body["message"] == "Pending events fetched"
+
+    high_data = high_body["data"]
+    assert high_data["total"] == 1
+    assert high_data["page"] == 1
+    assert high_data["page_size"] == 10
+    assert high_data["total_pages"] == 1
+    assert len(high_data["items"]) == 1
+    assert high_data["items"][0]["ip"] == "22.22.22.22"
+    assert high_data["items"][0]["ai_score"] == 90
+
+    medium_filter_resp = client.get(
+        "/api/v1/defense/pending",
+        params={
+            "status": "PENDING",
+            "source": "pending-filter-service",
+            "risk_level": "MEDIUM",
+            "sort_by": "created_at",
+            "sort_order": "asc",
+        },
+    )
+    assert medium_filter_resp.status_code == 200
+    medium_body = medium_filter_resp.json()
+    assert medium_body["code"] == 0
+    medium_items = medium_body["data"]["items"]
+    assert len(medium_items) == 1
+    assert medium_items[0]["ip"] == "11.11.11.11"
+    assert medium_items[0]["ai_score"] == 60
+
+
+def test_pending_events_invalid_query_validation():
+    bad_resp = client.get(
+        "/api/v1/defense/pending",
+        params={
+            "sort_by": "unknown_field",
+        },
+    )
+    assert bad_resp.status_code == 40000
+    body = bad_resp.json()
+    assert body["code"] == 40000
+    assert "sort_by" in str(body["message"])

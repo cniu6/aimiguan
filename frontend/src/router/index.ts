@@ -8,6 +8,41 @@ import DefenseRealtime from '../views/DefenseRealtime.vue'
 import ProbeRealtime from '../views/ProbeRealtime.vue'
 import SettingsPage from '../views/SettingsPage.vue'
 import ProfilePage from '../views/ProfilePage.vue'
+import OverviewPage from '../views/OverviewPage.vue'
+import IntegrationsPage from '../views/IntegrationsPage.vue'
+import AuditPage from '../views/AuditPage.vue'
+import ForbiddenPage from '../views/ForbiddenPage.vue'
+
+type UserRole = 'admin' | 'operator' | 'viewer'
+
+interface UserInfo {
+  username?: string
+  role?: string
+}
+
+const allowedRolesMap: Record<UserRole, UserRole[]> = {
+  admin: ['admin', 'operator', 'viewer'],
+  operator: ['operator', 'viewer'],
+  viewer: ['viewer'],
+}
+
+const parseUserInfo = (): UserInfo | null => {
+  const raw = localStorage.getItem('user_info')
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as UserInfo
+  } catch {
+    return null
+  }
+}
+
+const hasRoleAccess = (requiredRoles?: UserRole[]): boolean => {
+  if (!requiredRoles || requiredRoles.length === 0) return true
+  const user = parseUserInfo()
+  const role = (user?.role || 'viewer') as UserRole
+  const granted = allowedRolesMap[role] || ['viewer']
+  return requiredRoles.some((required) => granted.includes(required))
+}
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -19,13 +54,24 @@ const router = createRouter({
       meta: { requiresAuth: false }
     },
     {
+      path: '/forbidden',
+      name: 'forbidden',
+      component: ForbiddenPage,
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/',
       component: Layout,
       meta: { requiresAuth: true },
       children: [
         {
           path: '',
-          redirect: '/defense/realtime'
+          redirect: '/overview'
+        },
+        {
+          path: '/overview',
+          name: 'overview',
+          component: OverviewPage
         },
         {
           path: '/defense/realtime',
@@ -63,6 +109,18 @@ const router = createRouter({
           component: SettingsPage
         },
         {
+          path: '/integrations',
+          name: 'integrations',
+          component: IntegrationsPage,
+          meta: { requiredRoles: ['operator', 'admin'] }
+        },
+        {
+          path: '/audit',
+          name: 'audit',
+          component: AuditPage,
+          meta: { requiredRoles: ['operator', 'admin'] }
+        },
+        {
           path: '/profile',
           name: 'profile',
           component: ProfilePage
@@ -78,6 +136,10 @@ const router = createRouter({
         {
           path: '/ai',
           redirect: '/defense/ai'
+        },
+        {
+          path: '/ai-center',
+          redirect: '/defense/ai'
         }
       ]
     }
@@ -87,11 +149,23 @@ const router = createRouter({
 // Route guard
 router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem('access_token')
-  
+
   if (to.meta.requiresAuth !== false && !token) {
-    next('/login')
+    next({ path: '/login', query: { redirect: to.fullPath } })
+    return
   } else if (to.path === '/login' && token) {
     next('/')
+    return
+  }
+
+  const requiredRoles = to.meta.requiredRoles as UserRole[] | undefined
+  if (to.meta.requiresAuth !== false && !hasRoleAccess(requiredRoles)) {
+    next('/forbidden')
+    return
+  }
+
+  if (to.matched.length === 0) {
+    next('/overview')
   } else {
     next()
   }

@@ -457,6 +457,137 @@ AimiGuard（AI安全运营平台）
 4. AI 对扫描结果做风险分级、漏洞关联与修复建议。
 5. 输出扫描报告（摘要版 + 详细版），支持导出与审计存档。
 
+### C. 工作流图（Workflow）
+#### C1. 防御监控工作流（Defense Workflow）
+```mermaid
+flowchart TD
+    A[HFish/黑名单源] --> B[Collector 标准化]
+    B --> C[ThreatEvent 入库\nstatus=PENDING]
+    C --> D[AI 风险评分\nscore/reason/suggest]
+    D --> E{人工审批}
+    E -->|Reject| F[事件归档\nstatus=REJECTED]
+    E -->|Approve| G[创建 execution_task\nstate=QUEUED]
+    G --> H[执行器调用 MCP block_ip]
+    H --> I{设备执行结果}
+    I -->|Success| J[状态 SUCCESS\n推进事件 DONE]
+    I -->|Failed| K[指数退避重试]
+    K --> L{超过阈值?}
+    L -->|No| H
+    L -->|Yes| M[MANUAL_REQUIRED]
+    J --> N[可选: 防火墙同步]
+    M --> N
+    N --> O[审计/报告/追踪 trace_id]
+```
+
+#### C2. 探测扫描工作流（Scan Workflow）
+```mermaid
+flowchart TD
+    A[资产录入\nIP/CIDR/标签] --> B[创建 scan_task\nstate=CREATED]
+    B --> C[调度分发\nDISPATCHED]
+    C --> D[扫描执行\nRUNNING]
+    D --> E{执行状态}
+    E -->|超时/异常| F[FAILED_TIMEOUT/FAILED]
+    E -->|成功| G[解析结果\nhost/port/service/cve]
+    G --> H[scan_finding 入库\n去重聚合]
+    H --> I[AI 分析与修复建议]
+    I --> J[生成报告\nREPORTED]
+    J --> K[导出 Markdown/PDF\n审计归档]
+    F --> L[有限重试/人工复核]
+```
+
+#### C3. 跨链路控制点工作流（Control Points）
+```mermaid
+sequenceDiagram
+    participant U as User/API
+    participant G as Gateway
+    participant S as Service
+    participant Q as Queue/Executor
+    participant A as Audit
+    U->>G: 请求（可带 X-Trace-Id）
+    G->>S: 鉴权 + RBAC + 参数校验
+    S->>S: 幂等校验（Idempotency-Key）
+    S->>Q: 写入任务/执行动作
+    Q-->>S: 状态回传（成功/失败/重试）
+    S->>A: 写审计（actor/action/result/trace_id）
+    S-->>U: 统一响应 code/message/data/trace_id
+```
+    S-->>U: 统一响应 code/message/data/trace_id
+```
+
+#### C4. 工作流图例说明（Legend）
+| 图形元素 | 含义 | 颜色/样式建议 |
+|---------|------|---------------|
+| 圆角矩形 | 状态/节点 | 蓝色=正常, 橙色=警告, 红色=失败, 绿色=成功 |
+| 菱形 | 判断/分支点 | 黄色高亮 |
+| 粗箭头 | 主链路（正常流程） | 黑色实线 |
+| 虚线箭头 | 备选/可选链路 | 灰色虚线 |
+| 双竖线矩形 | 外部系统/服务 | 灰色边框 |
+
+#### C5. 状态机映射表（Step 3/4 对应）
+
+**threat_event 状态流转**
+| 当前状态 | 下一状态 | 触发条件 | 对应 Step |
+|---------|---------|----------|----------|
+| `PENDING` | `APPROVED` / `REJECTED` | 人工审批 | Step 3.17 |
+| `APPROVED` | `EXECUTING` | 执行器拉取任务 | Step 3.19 |
+| `EXECUTING` | `DONE` | 所有设备执行成功 | Step 3.19 |
+| `EXECUTING` | `FAILED` | 设备执行全部失败且超阈值 | Step 3.19 |
+| `REJECTED` | - | 归档终态 | Step 3.17 |
+| `DONE` | - | 归档终态 | Step 3.19 |
+
+**execution_task 状态流转**
+| 当前状态 | 下一状态 | 触发条件 | 对应 Step |
+|---------|---------|----------|----------|
+| `QUEUED` | `RUNNING` | 执行器拉取并开始 | Step 3.19 |
+| `RUNNING` | `SUCCESS` | 设备返回成功 | Step 3.19 |
+| `RUNNING` | `FAILED` | 设备返回失败 | Step 3.19 |
+| `FAILED` | `RETRYING` | 仍在重试阈值内 | Step 3.19 |
+| `RETRYING` | `RUNNING` | 重试调度 | Step 3.19 |
+| `RETRYING` | `MANUAL_REQUIRED` | 超过重试阈值 | Step 3.19 |
+| `MANUAL_REQUIRED` | - | 人工介入终态 | Step 3.19 |
+
+**scan_task 状态流转（Step 4）**
+| 当前状态 | 下一状态 | 触发条件 | 对应 Step |
+|---------|---------|----------|----------|
+| `CREATED` | `DISPATCHED` | 调度器分发任务 | Step 4.6 |
+| `DISPATCHED` | `RUNNING` | 扫描工具启动 | Step 4.7 |
+| `RUNNING` | `PARSED` | 解析完成 | Step 4.9 |
+| `PARSED` | `REPORTED` | 报告生成 | Step 4.13 |
+| `RUNNING` | `FAILED` | 超时或异常 | Step 4.7 |
+| `FAILED` | `RETRYING` | 有限重试 | Step 4.7 |
+| `RETRYING` | `MANUAL_REQUIRED` | 超过重试阈值 | Step 4.7 |
+
+**firewall_sync_task 状态流转**
+| 当前状态 | 下一状态 | 触发条件 |
+|---------|---------|----------|
+| `PENDING` | `RUNNING` | 同步任务调度 |
+| `RUNNING` | `SUCCESS` | 防火墙返回成功 |
+| `RUNNING` | `FAILED` | 防火墙返回错误 |
+| `FAILED` | `RETRYING` | 指数退避重试 |
+| `RETRYING` | `MANUAL_REQUIRED` | 超过阈值 |
+
+#### C6. 失败分支与重试策略
+
+| 场景 | 处理策略 | 重试参数 | 终态 |
+|------|----------|----------|------|
+| MCP 设备不可达 | 指数退避，阈值 3 次 | 间隔 1s/2s/4s | `MANUAL_REQUIRED` |
+| 设备权限错误 | 立即终止，标记不可恢复 | - | `MANUAL_REQUIRED` |
+| 扫描任务超时 | 超时中断，标记失败 | 重试 2 次，间隔 30s | `FAILED` |
+| AI 评分失败 | 规则引擎兜底，强制人工审批 | - | `PENDING`（需人工） |
+| 幂等冲突 | 返回首次执行结果 | - | - |
+| 防火墙同步失败 | 记录回执，不阻塞主链路 | 重试 3 次 | `MANUAL_REQUIRED` |
+
+#### C7. 关键 trace_id 贯穿点
+
+| 阶段 | trace_id 生成时机 | 贯穿链路 |
+|------|-------------------|----------|
+| 事件接入 | `collector` 接收时（无则生成） | threat_event → ai_decision → execution_task → audit_log |
+| 任务创建 | `scan_task` 创建时 | scan_task → scan_finding → ai_report |
+| 审批操作 | `API` 入栈时 | execution_task → firewall_sync_task → audit_log |
+| 外部调用 | `MCP/Firewall` 请求时 | 请求 Header + 响应回执 |
+
+## 主流程（可执行展开版）
+### A1. 防御监控 E2E（Runbook）
 ## 主流程（可执行展开版）
 ### A1. 防御监控 E2E（Runbook）
 - 阶段 0（事件接入）
@@ -2151,7 +2282,7 @@ requirements.txt
 - [x] 2.3 实现刷新接口（refresh token 换新 access token）。
 - [x] 2.4 实现 JWT 验签中间件（过期、签名、格式错误统一处理）。
 - [ ] 2.5 实现 RBAC 权限装饰器（接口级权限点绑定）。
-- [ ] 2.6 完成前端路由守卫（未登录跳登录、无权限跳 403 页面）。
+- [x] 2.6 完成前端路由守卫（未登录跳登录、无权限跳 403 页面）。
 - [x] 2.7 实现 `trace_id` 中间件（优先读取请求头，缺失自动生成）。
 - [x] 2.8 实现统一响应封装：`code/message/data/trace_id`。
 - [x] 2.9 实现统一异常处理器（400xx/401xx/403xx/409xx/500xx/502xx）。
@@ -2162,7 +2293,7 @@ requirements.txt
 - [x] 2.14 实现 `services/audit_service.py`（统一写审计入口）。
 - [x] 2.15 搭建后台 App Shell：`Sidebar + Topbar + RouterView + 右侧通知抽屉`。
 - [x] 2.16 完成 Sidebar 菜单与路由元信息：`overview/defense/scan/ai-center/integrations/audit/settings`。
-- [ ] 2.17 完成 Topbar 主动/被动模式开关（影响说明+确认弹窗+原因输入）。
+- [x] 2.17 完成 Topbar 主动/被动模式开关（影响说明+确认弹窗+原因输入）。
 - [x] 2.18 完成右上角系统菜单（通知、个人中心、安全设置、系统设置、退出登录）。
 - [x] 2.19 实现 `POST /api/v1/auth/logout`（会话失效/可选 token 黑名单）。
 - [x] 2.20 实现前端退出清理（token/user/缓存）并跳转 `#/login`。
@@ -3830,3 +3961,114 @@ Invoke-WebRequest http://localhost:8000/api/health
 **紧急联系**
 - 值班电话：<待补充>
 - 应急响应：<待补充>
+## 故障排查与应急手册（Troubleshooting）
+### 网络连通性排查
+| 检查项 | 命令/方法 | 预期结果 |
+|--------|-----------|----------|
+| 后端服务健康 | `curl http://localhost:8000/health` | `{"status":"healthy"}` |
+| 数据库可访问 | `sqlite3 aimiguard.db ".tables"` | 列出所有表 |
+| AI 服务可用 | `curl http://localhost:11434/api/tags` | 返回模型列表 |
+| MCP 进程运行 | `ps aux | grep mcp` | 进程存在 |
+
+### 常见故障处理
+| 故障现象 | 可能原因 | 排查方法 | 解决方案 |
+|----------|----------|----------|----------|
+| 审批提交无响应 | 执行器未启动 | 检查 `execution_task` 队列 | 重启执行器服务 |
+| AI 评分超时 | 模型服务不可达 | 检查 `LLM_BASE_URL` 配置 | 切换备用模型或启用规则兜底 |
+| 封禁执行失败 | MCP 设备连接失败 | 检查设备网络与凭据 | 验证凭据有效期 |
+| 扫描任务卡住 | 扫描工具进程挂起 | 检查任务超时设置 | 手动重置任务状态 |
+| 前端无法登录 | JWT 配置不一致 | 检查 `JWT_SECRET` 环境变量 | 保持前后端配置一致 |
+
+### 日志定位关键
+```bash
+# 查看最近 100 条错误日志
+tail -n 100 backend/logs/error.log | grep ERROR
+
+# 按 trace_id 检索完整链路
+grep "trace_id=abc123" backend/logs/*.log
+
+# 查看执行器重试日志
+tail -f backend/logs/executor.log | grep RETRY
+
+# 查看 AI 评分降级日志
+grep "DEGRADED" backend/logs/ai.log
+```
+
+## 性能优化建议
+### API 响应优化
+- 列表接口默认分页 `page=1&size=20`，避免全量返回
+- 复杂聚合查询使用异步任务，结果通过 WebSocket 推送
+- 启用响应缓存（静态数据/配置类接口）
+
+### 数据库优化
+- 定期 `VACUUM` 维护 SQLite（建议每周）
+- 监控表大小，及时归档历史数据（>10万行考虑分区）
+- 关键查询确保有对应索引（状态+时间+trace_id）
+
+### 任务队列优化
+- 扫描并发上限默认 3，避免资源争抢
+- 重试间隔使用指数退避（1s→2s→4s→8s）
+- 长任务设置超时自动终止
+
+## 安全加固检查清单
+### 身份鉴别
+- [ ] JWT_SECRET 长度 >= 32 位
+- [ ] Token 过期时间 <= 24 小时
+- [ ] 敏感接口开启二次确认
+
+### 访问控制
+- [ ] 生产环境关闭 `DEBUG` 模式
+- [ ] API 接口默认鉴权（白名单除外）
+- [ ] RBAC 权限点与接口一一对应
+
+### 数据保护
+- [ ] 凭据密文存储（aes-gcm 加密）
+- [ ] 敏感字段返回脱敏
+- [ ] 审计日志不可修改
+
+### 日志与审计
+- [ ] 全链路 trace_id 透传
+- [ ] 高危操作写审计并通知
+- [ ] 日志保留 >= 180 天
+
+## 附录
+### 环境变量速查表
+| 变量名 | 必填 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `APP_ENV` | 是 | dev | 运行环境 |
+| `DATABASE_URL` | 是 | sqlite:///aimiguard.db | 数据库连接 |
+| `JWT_SECRET` | 是 | - | JWT 签名密钥 |
+| `LLM_PROVIDER` | 是 | ollama | AI 模型供应商 |
+| `LLM_BASE_URL` | 是 | http://localhost:11434 | 模型服务地址 |
+| `TTS_PROVIDER` | 否 | - | TTS 引擎类型 |
+| `MCP_MODE` | 否 | stdio | MCP 通信模式 |
+| `FIREWALL_API_URL` | 否 | - | 外部防火墙 API |
+
+### 关键文件路径
+```
+backend/
+├── main.py                 # 后端入口
+├── api/                    # API 路由
+│   ├── auth.py            # 鉴权接口
+│   ├── defense.py         # 防御接口
+│   └── scan.py            # 扫描接口
+├── services/              # 业务服务
+│   ├── ai_engine.py       # AI 评分
+│   ├── executor.py        # 执行器
+│   └── audit_service.py   # 审计服务
+└── models/                # 数据模型
+
+frontend/
+├── src/
+│   ├── views/             # 页面组件
+│   ├── router/            # 路由配置
+│   └── stores/            # 状态管理
+└── package.json
+```
+
+### 版本历史
+| 版本 | 日期 | 变更说明 |
+|------|------|----------|
+| v1.0.0 | 2026-02 | 初始版本，防御链路 MVP |
+
+> 本 README 为项目唯一主文档，如有问题请联系维护者。

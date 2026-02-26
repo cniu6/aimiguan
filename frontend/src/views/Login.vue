@@ -55,7 +55,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '../api/auth'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -66,6 +66,7 @@ import { Separator } from '@/components/ui/separator'
 import { ShieldCheck, XCircle, Loader2 } from 'lucide-vue-next'
 
 const router = useRouter()
+const route = useRoute()
 const form = ref({ username: '', password: '' })
 const loading = ref(false)
 const error = ref('')
@@ -81,7 +82,8 @@ const handleLogin = async () => {
     const res = await authApi.login(form.value)
     localStorage.setItem('access_token', res.access_token)
     localStorage.setItem('user_info', JSON.stringify(res.user))
-    router.push('/')
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
+    router.push(redirect)
   } catch (err: any) {
     error.value = err.displayMessage || err.response?.data?.detail || '登录失败，请检查用户名和密码'
   } finally {
@@ -89,5 +91,4 @@ const handleLogin = async () => {
   }
 }
 </script>
-
 
