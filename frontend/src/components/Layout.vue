@@ -218,12 +218,12 @@
 
       <aside
         ref="sidebarRef"
-        class="relative hidden shrink-0 border-r border-sidebar-border bg-sidebar transition-[width,padding] duration-300 ease-out md:flex md:flex-col"
+        class="relative hidden shrink-0 border-r border-sidebar-border bg-sidebar transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] md:flex md:flex-col"
         :class="sidebarCollapsed ? 'px-2 py-3' : 'p-3'"
         :style="{ width: `${sidebarCurrentWidth}px` }"
       >
         <div
-          class="mb-3 rounded-md border transition-all duration-300 backdrop-blur-sm bg-background/60"
+          class="mb-3 min-h-8 rounded-md border transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] backdrop-blur-sm bg-background/60 flex items-center justify-center overflow-hidden"
           :class="[
             sidebarCollapsed ? 'px-2 py-2 text-center' : 'px-3 py-2',
             activeMode === 'defense' 
@@ -231,7 +231,7 @@
               : 'border-orange-500 text-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.1)]'
           ]"
         >
-          <p class="font-medium tracking-wide" :class="sidebarCollapsed ? 'text-[11px]' : 'text-xs'">
+          <p class="font-medium tracking-wide leading-none flex items-center justify-center" :class="sidebarCollapsed ? 'text-[11px]' : 'text-xs'">
             <span
               class="sidebar-mode-label"
               :class="sidebarCollapsed ? 'sidebar-mode-label-collapsed' : 'sidebar-mode-label-expanded'"
@@ -412,10 +412,43 @@ const widthToStep = (width: number) => {
   return nearestStep
 }
 
-const sidebarCurrentWidth = computed(() => {
+const getSidebarTargetWidth = () => {
   if (sidebarCollapsed.value) return 72
   return sidebarWidthPresets[sidebarWidthStep.value]
-})
+}
+
+const sidebarAnimatedWidth = ref(getSidebarTargetWidth())
+let sidebarWidthAnimationFrame: number | null = null
+
+const stopSidebarWidthAnimation = () => {
+  if (sidebarWidthAnimationFrame !== null) {
+    cancelAnimationFrame(sidebarWidthAnimationFrame)
+    sidebarWidthAnimationFrame = null
+  }
+}
+
+const runSidebarWidthAnimation = () => {
+  stopSidebarWidthAnimation()
+
+  const animate = () => {
+    const target = getSidebarTargetWidth()
+    const current = sidebarAnimatedWidth.value
+    const diff = target - current
+
+    if (Math.abs(diff) < 0.5) {
+      sidebarAnimatedWidth.value = target
+      sidebarWidthAnimationFrame = null
+      return
+    }
+
+    sidebarAnimatedWidth.value = current + diff * 0.18
+    sidebarWidthAnimationFrame = requestAnimationFrame(animate)
+  }
+
+  sidebarWidthAnimationFrame = requestAnimationFrame(animate)
+}
+
+const sidebarCurrentWidth = computed(() => Math.round(sidebarAnimatedWidth.value))
 
 const toggleSidebarCollapsed = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
@@ -443,6 +476,8 @@ const updateSidebarWidthByClientX = (clientX: number) => {
   const shellLeft = shellEl.getBoundingClientRect().left
   const nextWidth = clientX - shellLeft
   const clampedWidth = Math.min(sidebarWidthPresets[maxSidebarWidthStep], Math.max(sidebarWidthPresets[minSidebarWidthStep], nextWidth))
+  stopSidebarWidthAnimation()
+  sidebarAnimatedWidth.value = clampedWidth
   sidebarWidthStep.value = widthToStep(clampedWidth)
 }
 
@@ -457,6 +492,10 @@ const stopSidebarResize = () => {
   if (sidebarResizeUpHandler) {
     window.removeEventListener('mouseup', sidebarResizeUpHandler)
     sidebarResizeUpHandler = null
+  }
+
+  if (!sidebarCollapsed.value) {
+    runSidebarWidthAnimation()
   }
 }
 
@@ -480,6 +519,11 @@ const startSidebarResize = (event: MouseEvent) => {
 
 watch(sidebarCollapsed, (collapsed) => {
   localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0')
+})
+
+watch([sidebarCollapsed, sidebarWidthStep], () => {
+  if (isSidebarResizing.value) return
+  runSidebarWidthAnimation()
 })
 
 watch(sidebarWidthStep, (step) => {
@@ -918,6 +962,7 @@ watch(() => route.fullPath, () => {
 onMounted(() => {
   initTheme()
   loadSidebarPreference()
+  sidebarAnimatedWidth.value = getSidebarTargetWidth()
 
   const userInfo = localStorage.getItem('user_info')
   if (userInfo) {
@@ -939,6 +984,7 @@ onUnmounted(() => {
     progressTimer = null
   }
   stopSidebarResize()
+  stopSidebarWidthAnimation()
 })
 
 const handleLogout = async () => {
