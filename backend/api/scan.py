@@ -87,11 +87,11 @@ def _normalize_target(target: str, target_type: str) -> str:
 
     if target_type == "CIDR":
         if "/" not in value:
-            raise HTTPException(status_code=400, detail="CIDR 必须包含掩码，例如 10.0.0.0/24")
+            raise HTTPException(status_code=400, detail={"code": 40002, "message": "CIDR 必须包含掩码，例如 10.0.0.0/24"})
         try:
             return str(ipaddress.ip_network(value, strict=False))
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail="CIDR 格式不合法") from exc
+            raise HTTPException(status_code=400, detail={"code": 40002, "message": "CIDR 格式不合法"}) from exc
 
     normalized = value.lower().rstrip(".")
     if not DOMAIN_PATTERN.fullmatch(normalized):
@@ -208,7 +208,7 @@ async def create_asset(
     # 检查是否已存在
     existing = db.query(Asset).filter(Asset.target == normalized_target).first()
     if existing:
-        raise HTTPException(status_code=400, detail="资产已存在")
+        raise HTTPException(status_code=400, detail={"code": 40001, "message": "资产已存在"})
 
     asset = Asset(
         target=normalized_target,

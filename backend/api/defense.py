@@ -629,6 +629,7 @@ async def receive_alert(
             trace_id=trace_id,
         )
         raise HTTPException(status_code=502, detail={
+            "code": 50201,
             "error": "upstream_response_invalid",
             "message": "HFish 源端响应失败，未进入解析流程",
             "response_code": alert.response_code,
@@ -846,11 +847,11 @@ async def get_pending_events(
         "status": ThreatEvent.status,
     }
     if normalized_sort_by not in sort_field_map:
-        raise HTTPException(status_code=400, detail="sort_by must be one of created_at, updated_at, ai_score, ip, status")
+        raise HTTPException(status_code=400, detail={"code": 40000, "message": "sort_by must be one of created_at, updated_at, ai_score, ip, status"})
 
     normalized_sort_order = str(sort_order).strip().lower()
     if normalized_sort_order not in {"asc", "desc"}:
-        raise HTTPException(status_code=400, detail="sort_order must be asc or desc")
+        raise HTTPException(status_code=400, detail={"code": 40000, "message": "sort_order must be asc or desc"})
 
     query = db.query(ThreatEvent)
     normalized_status = str(status or "").strip().upper()

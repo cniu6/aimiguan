@@ -136,7 +136,7 @@ def test_create_asset_duplicate_rejected():
 
     assert response.status_code == 400
     body = response.json()
-    assert body["code"] == 40000
+    assert body["code"] == 40001
     assert "资产已存在" in body["message"]
 
 
@@ -150,7 +150,7 @@ def test_create_asset_invalid_cidr_rejected():
 
     assert response.status_code == 400
     body = response.json()
-    assert body["code"] == 40000
+    assert body["code"] == 40002
     assert "CIDR" in body["message"]
 
 

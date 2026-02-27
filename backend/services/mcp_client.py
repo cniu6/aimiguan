@@ -5,7 +5,7 @@ import json
 import asyncio
 from typing import Dict, Any, Optional, List
 import httpx
-from datetime import datetime
+from datetime import datetime, timezone
 
 from core.database import SessionLocal, Device, Credential, ExecutionTask
 from services.audit_service import AuditService
@@ -54,7 +54,7 @@ class MCPClient:
                     "ip": arguments.get("ip"),
                     "device_id": arguments.get("device_id"),
                     "rule_id": f"rule_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
                 "tool": tool_name,
             }
@@ -65,7 +65,7 @@ class MCPClient:
                     "action": "unblock",
                     "ip": arguments.get("ip"),
                     "device_id": arguments.get("device_id"),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
                 "tool": tool_name,
             }
@@ -78,7 +78,7 @@ class MCPClient:
                     "cpu_usage": 45.2,
                     "memory_usage": 62.1,
                     "uptime": "15d 3h 22m",
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
                 "tool": tool_name,
             }

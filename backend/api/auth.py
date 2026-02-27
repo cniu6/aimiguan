@@ -66,6 +66,7 @@ def require_permissions(*required_permissions: str):
         if missing:
             trace_id = getattr(request.state, "trace_id", None)
             raise HTTPException(status_code=403, detail={
+                "code": 40301,
                 "error": "permission_denied",
                 "message": f"缺少权限: {missing[0]}",
                 "required_permission": missing[0],
@@ -143,11 +144,11 @@ async def get_current_user(
     try:
         token = credentials.credentials
         if token in BLACKLISTED_TOKENS:
-            raise HTTPException(status_code=401, detail="令牌已失效，请重新登录")
+            raise HTTPException(status_code=401, detail={"code": 40102, "message": "令牌已失效，请重新登录"})
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
         if not isinstance(username, str) or not username:
-            raise HTTPException(status_code=401, detail="无效的认证令牌")
+            raise HTTPException(status_code=401, detail={"code": 40101, "message": "无效的认证令牌"})
     except JWTError:
         raise HTTPException(status_code=401, detail="无效的认证令牌")
 

@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 import subprocess
 import tempfile
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from core.database import SessionLocal, ScanTask, ScanFinding, Asset
@@ -317,7 +317,7 @@ class Scanner:
 
             # 2. 更新状态为 RUNNING
             scan_task.state = "RUNNING"
-            scan_task.started_at = datetime.utcnow()
+            scan_task.started_at = datetime.now(timezone.utc)
             db.commit()
 
             # 记录审计
@@ -341,7 +341,7 @@ class Scanner:
             except asyncio.TimeoutError:
                 scan_task.state = "FAILED"
                 scan_task.error_message = f"Scan timeout after {effective_timeout}s"
-                scan_task.ended_at = datetime.utcnow()
+                scan_task.ended_at = datetime.now(timezone.utc)
                 db.commit()
                 AuditService.log(
                     db=db,
@@ -359,7 +359,7 @@ class Scanner:
                 # 扫描失败
                 scan_task.state = "FAILED"
                 scan_task.error_message = result.get("error", "Unknown error")
-                scan_task.ended_at = datetime.utcnow()
+                scan_task.ended_at = datetime.now(timezone.utc)
                 db.commit()
 
                 AuditService.log(
@@ -451,7 +451,7 @@ class Scanner:
 
             # 7. 生成报告并更新为 REPORTED
             scan_task.state = "REPORTED"
-            scan_task.ended_at = datetime.utcnow()
+            scan_task.ended_at = datetime.now(timezone.utc)
             db.commit()
 
             # 记录成功审计
@@ -475,7 +475,7 @@ class Scanner:
             if scan_task:
                 scan_task.state = "FAILED"
                 scan_task.error_message = str(e)[:500]
-                scan_task.ended_at = datetime.utcnow()
+                scan_task.ended_at = datetime.now(timezone.utc)
                 db.commit()
 
             AuditService.log(

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from core.database import get_db, AIReport
@@ -31,7 +31,7 @@ async def generate_report(
         report_type=req.report_type,
         scope=req.scope,
         summary=summary,
-        detail_path=f"/reports/{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.md",
+        detail_path=f"/reports/{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.md",
         trace_id=trace_id,
     )
     db.add(report)

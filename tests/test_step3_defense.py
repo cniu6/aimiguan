@@ -140,11 +140,11 @@ def test_hfish_response_code_validation():
         "attack_trend": [],
     }
     response = client.post("/alerts", json=payload)
-    assert response.status_code == 50201
+    assert response.status_code == 502
     body = response.json()
     assert body["code"] == 50201
-    assert body["message"]["error"] == "upstream_response_invalid"
-    assert body["message"]["response_code"] == 500
+    assert body["data"]["error"] == "upstream_response_invalid"
+    assert body["data"]["response_code"] == 500
 
 
 def get_token(username: str = "admin", password: str = "admin123") -> str:
@@ -552,7 +552,7 @@ def test_pending_events_invalid_query_validation():
         },
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert bad_resp.status_code == 40000
+    assert bad_resp.status_code == 400
     body = bad_resp.json()
     assert body["code"] == 40000
     assert "sort_by" in str(body["message"])
@@ -596,8 +596,8 @@ def test_approve_event_permission_denied_for_viewer(monkeypatch):
         json={"reason": "viewer try"},
         headers={"Authorization": f"Bearer {viewer_token}"},
     )
-    assert approve.status_code == 40301
+    assert approve.status_code == 403
     body = approve.json()
     assert body["code"] == 40301
-    assert body["message"]["error"] == "permission_denied"
-    assert body["message"]["required_permission"] == "approve_event"
+    assert body["data"]["error"] == "permission_denied"
+    assert body["data"]["required_permission"] == "approve_event"

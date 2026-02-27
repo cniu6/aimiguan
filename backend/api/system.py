@@ -221,6 +221,7 @@ async def rollback_system(
 
     if payload.target_version not in available_versions:
         raise HTTPException(status_code=404, detail={
+            "code": 40404,
             "error": "version_not_found",
             "message": f"目标版本 {payload.target_version} 不在可回滚列表中",
             "available_versions": available_versions,
@@ -239,6 +240,7 @@ async def rollback_system(
 
     if not target:
         raise HTTPException(status_code=404, detail={
+            "code": 40404,
             "error": "version_not_found",
             "message": f"目标版本 {payload.target_version} 不在可回滚列表中",
             "available_versions": available_versions,

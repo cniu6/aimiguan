@@ -181,9 +181,10 @@ def test_rollback_to_invalid_version():
         json={"target_version": "v9.9.9", "reason": "测试不存在版本"},
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert response.status_code == 40404
+    assert response.status_code == 404
     data = response.json()
-    assert "available_versions" in data["message"]
+    assert data["code"] == 40404
+    assert "available_versions" in data["data"]
 
 
 def test_rollback_success():
@@ -312,4 +313,6 @@ def test_logout_invalidates_token():
         "/api/v1/system/profile",
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert profile_response.status_code == 40102
+    assert profile_response.status_code == 401
+    body = profile_response.json()
+    assert body["code"] == 40102
