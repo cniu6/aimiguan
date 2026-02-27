@@ -9,7 +9,7 @@
       </CardHeader>
       <CardContent class="flex gap-3">
         <Button variant="outline" class="cursor-pointer" @click="goBack">返回上页</Button>
-        <Button class="cursor-pointer" @click="goHome">回到总览</Button>
+        <Button class="cursor-pointer" @click="goHome">回到仪表盘</Button>
       </CardContent>
     </Card>
   </div>
@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button'
 const router = useRouter()
 
 const goHome = () => {
-  router.push('/overview')
+  router.push('/defense/dashboard')
 }
 
 const goBack = () => {

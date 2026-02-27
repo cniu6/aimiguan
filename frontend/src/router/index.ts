@@ -9,6 +9,7 @@ import ProbeRealtime from '../views/ProbeRealtime.vue'
 import SettingsPage from '../views/SettingsPage.vue'
 import ProfilePage from '../views/ProfilePage.vue'
 import OverviewPage from '../views/OverviewPage.vue'
+import ProbeDashboardPage from '../views/ProbeDashboardPage.vue'
 import IntegrationsPage from '../views/IntegrationsPage.vue'
 import AuditPage from '../views/AuditPage.vue'
 import ForbiddenPage from '../views/ForbiddenPage.vue'
@@ -66,12 +67,21 @@ const router = createRouter({
       children: [
         {
           path: '',
-          redirect: '/overview'
+          redirect: '/defense/dashboard'
+        },
+        {
+          path: '/defense/dashboard',
+          name: 'defense-dashboard',
+          component: OverviewPage
+        },
+        {
+          path: '/probe/dashboard',
+          name: 'probe-dashboard',
+          component: ProbeDashboardPage
         },
         {
           path: '/overview',
-          name: 'overview',
-          component: OverviewPage
+          redirect: '/defense/dashboard'
         },
         {
           path: '/defense/realtime',
@@ -127,7 +137,7 @@ const router = createRouter({
         },
         {
           path: '/defense',
-          redirect: '/defense/realtime'
+          redirect: '/defense/dashboard'
         },
         {
           path: '/scan',
@@ -165,7 +175,7 @@ router.beforeEach((to, _from, next) => {
   }
 
   if (to.matched.length === 0) {
-    next('/overview')
+    next('/defense/dashboard')
   } else {
     next()
   }

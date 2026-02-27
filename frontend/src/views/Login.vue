@@ -1,6 +1,21 @@
 <template>
   <div class="min-h-screen grid place-items-center bg-background px-4">
-    <Card class="w-full max-w-[400px] border-border shadow-sm">
+    <Card class="relative w-full max-w-[400px] border-border shadow-sm">
+      <div class="absolute right-4 top-4">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          class="size-8 cursor-pointer text-muted-foreground"
+          :aria-label="isDarkMode ? '切换到浅色模式' : '切换到深色模式'"
+          :title="isDarkMode ? '切换到浅色模式' : '切换到深色模式'"
+          @click="toggleTheme"
+        >
+          <Sun v-if="isDarkMode" class="size-4" />
+          <Moon v-else class="size-4" />
+        </Button>
+      </div>
+
       <CardHeader class="space-y-2 text-center">
         <div class="mx-auto inline-flex size-12 items-center justify-center rounded-lg border border-border bg-muted">
           <ShieldCheck class="size-6 text-primary" />
@@ -54,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '../api/auth'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
@@ -63,13 +78,76 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
-import { ShieldCheck, XCircle, Loader2 } from 'lucide-vue-next'
+import { ShieldCheck, XCircle, Loader2, Moon, Sun } from 'lucide-vue-next'
 
 const router = useRouter()
 const route = useRoute()
 const form = ref({ username: '', password: '' })
 const loading = ref(false)
 const error = ref('')
+const isDarkMode = ref(false)
+const THEME_KEY = 'theme'
+
+type ThemeMode = 'light' | 'dark'
+
+const applyTheme = (mode: ThemeMode) => {
+  const root = document.documentElement
+  root.classList.toggle('dark', mode === 'dark')
+  isDarkMode.value = mode === 'dark'
+  localStorage.setItem(THEME_KEY, mode)
+}
+
+const initTheme = () => {
+  const savedTheme = localStorage.getItem(THEME_KEY)
+  if (savedTheme === 'light' || savedTheme === 'dark') {
+    applyTheme(savedTheme)
+    return
+  }
+
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  applyTheme(prefersDark ? 'dark' : 'light')
+}
+
+const toggleTheme = async (event?: MouseEvent) => {
+  const newMode: ThemeMode = isDarkMode.value ? 'light' : 'dark'
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  if (reducedMotion) {
+    applyTheme(newMode)
+    return
+  }
+
+  const triggerElement = event?.currentTarget
+  if (!(triggerElement instanceof HTMLElement)) {
+    applyTheme(newMode)
+    return
+  }
+
+  const rect = triggerElement.getBoundingClientRect()
+  const x = rect.left + rect.width / 2
+  const y = rect.top + rect.height / 2
+
+  const { executeThemeAnimation, getAnimationConfig } = await import('@/composables/useThemeAnimation')
+  const config = getAnimationConfig()
+
+  if (config.type === 'view') {
+    const root = document.documentElement
+    root.classList.add('view-transitioning')
+    isDarkMode.value = newMode === 'dark'
+    localStorage.setItem(THEME_KEY, newMode)
+    try {
+      await executeThemeAnimation({ x, y, reducedMotion })
+    } finally {
+      root.classList.remove('view-transitioning')
+    }
+  } else {
+    const animationPromise = executeThemeAnimation({ x, y, reducedMotion })
+    setTimeout(() => {
+      applyTheme(newMode)
+    }, config.duration / 2)
+    await animationPromise
+  }
+}
 
 const handleLogin = async () => {
   if (!form.value.username || !form.value.password) {
@@ -90,5 +168,8 @@ const handleLogin = async () => {
     loading.value = false
   }
 }
-</script>
 
+onMounted(() => {
+  initTheme()
+})
+</script>

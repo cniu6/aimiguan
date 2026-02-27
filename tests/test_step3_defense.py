@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from importlib import import_module
 
@@ -67,8 +68,56 @@ def setup_database():
     db.execute(
         text(
             """
+            INSERT INTO role (name, description, created_at, updated_at)
+            VALUES ('viewer', '只读用户', :now, :now)
+            """
+        ),
+        {"now": now},
+    )
+    db.execute(
+        text(
+            """
             INSERT INTO user_role (user_id, role_id, granted_by, created_at, updated_at)
             VALUES (1, 1, 'system', :now, :now)
+            """
+        ),
+        {"now": now},
+    )
+    db.execute(
+        text(
+            """
+            INSERT INTO user (username, password_hash, email, enabled, created_at, updated_at)
+            VALUES ('viewer', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'viewer@test.com', 1, :now, :now)
+            """
+        ),
+        {"now": now},
+    )
+    db.execute(
+        text(
+            """
+            INSERT INTO user_role (user_id, role_id, granted_by, created_at, updated_at)
+            VALUES (2, 2, 'system', :now, :now)
+            """
+        ),
+        {"now": now},
+    )
+    db.execute(
+        text(
+            """
+            INSERT INTO permission (name, resource, action, description, created_at)
+            VALUES
+              ('view_events', 'defense', 'read', '查看威胁事件', :now),
+              ('approve_event', 'defense', 'approve', '审批威胁事件', :now),
+              ('reject_event', 'defense', 'reject', '驳回威胁事件', :now)
+            """
+        ),
+        {"now": now},
+    )
+    db.execute(
+        text(
+            """
+            INSERT INTO role_permission (role_id, permission_id, created_at)
+            VALUES (1, 1, :now), (1, 2, :now), (1, 3, :now)
             """
         ),
         {"now": now},
@@ -96,6 +145,16 @@ def test_hfish_response_code_validation():
     assert body["code"] == 50201
     assert body["message"]["error"] == "upstream_response_invalid"
     assert body["message"]["response_code"] == 500
+
+
+def get_token(username: str = "admin", password: str = "admin123") -> str:
+    response = client.post(
+        "/api/v1/auth/login", json={"username": username, "password": password}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "access_token" in data
+    return data["access_token"]
 
 
 def test_hfish_ingest_normalize_and_dedupe():
@@ -347,27 +406,37 @@ def test_approve_event_block_retry_to_manual_required(monkeypatch):
     event_id = ingest.json()["data"]["event_id"]
     assert event_id is not None
 
-    approve = client.post(f"/events/{event_id}/approve", json={"reason": "go"})
+    token = get_token()
+    approve = client.post(
+        f"/events/{event_id}/approve",
+        json={"reason": "go"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert approve.status_code == 200
     body = approve.json()
     assert body["code"] == 0
-    assert body["data"]["task_state"] == "MANUAL_REQUIRED"
-    assert body["data"]["retry_count"] == 3
+    assert body["data"]["task_state"] in {"QUEUED", "RUNNING", "FAILED", "RETRYING"}
 
     db = TestingSessionLocal()
     try:
-        task_row = db.execute(
-            text(
-                """
-                SELECT state, retry_count, error_message, ended_at
-                FROM execution_task
-                WHERE event_id = :event_id
-                ORDER BY id DESC
-                LIMIT 1
-                """
-            ),
-            {"event_id": int(event_id)},
-        ).fetchone()
+        task_row = None
+        for _ in range(30):
+            task_row = db.execute(
+                text(
+                    """
+                    SELECT state, retry_count, error_message, ended_at
+                    FROM execution_task
+                    WHERE event_id = :event_id
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """
+                ),
+                {"event_id": int(event_id)},
+            ).fetchone()
+            if task_row is not None and task_row[0] == "MANUAL_REQUIRED":
+                break
+            time.sleep(0.05)
+
         assert task_row is not None
         assert task_row[0] == "MANUAL_REQUIRED"
         assert task_row[1] == 3
@@ -385,6 +454,7 @@ def test_approve_event_block_retry_to_manual_required(monkeypatch):
 
 
 def test_pending_events_filter_pagination_and_sorting():
+    token = get_token()
     payload = {
         "response_code": 0,
         "response_message": "ok",
@@ -437,6 +507,7 @@ def test_pending_events_filter_pagination_and_sorting():
             "sort_by": "ai_score",
             "sort_order": "desc",
         },
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert high_filter_resp.status_code == 200
     high_body = high_filter_resp.json()
@@ -461,6 +532,7 @@ def test_pending_events_filter_pagination_and_sorting():
             "sort_by": "created_at",
             "sort_order": "asc",
         },
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert medium_filter_resp.status_code == 200
     medium_body = medium_filter_resp.json()
@@ -472,13 +544,60 @@ def test_pending_events_filter_pagination_and_sorting():
 
 
 def test_pending_events_invalid_query_validation():
+    token = get_token()
     bad_resp = client.get(
         "/api/v1/defense/pending",
         params={
             "sort_by": "unknown_field",
         },
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert bad_resp.status_code == 40000
     body = bad_resp.json()
     assert body["code"] == 40000
     assert "sort_by" in str(body["message"])
+
+
+def test_approve_event_permission_denied_for_viewer(monkeypatch):
+    async def fake_assess_threat(
+        ip: str, attack_type: str, attack_count: int, history=None
+    ):
+        return {"score": 90, "reason": "AI high", "action_suggest": "BLOCK"}
+
+    async def fake_block_ip(ip: str, device_id=None):
+        return {"success": True}
+
+    monkeypatch.setattr(defense_module.ai_engine, "assess_threat", fake_assess_threat)
+    monkeypatch.setattr(defense_module.mcp_client, "block_ip", fake_block_ip)
+
+    ingest_payload = {
+        "response_code": 0,
+        "list_infos": [
+            {
+                "client_id": "source-viewer-deny",
+                "service_name": "ssh-honeypot",
+                "service_type": "ssh",
+                "attack_ip": "8.8.8.8",
+                "attack_count": 5,
+                "labels": "bruteforce",
+            }
+        ],
+        "attack_infos": [],
+        "attack_trend": [],
+    }
+    ingest = client.post("/alerts", json=ingest_payload)
+    assert ingest.status_code == 200
+    event_id = ingest.json()["data"]["event_id"]
+    assert event_id is not None
+
+    viewer_token = get_token(username="viewer", password="admin123")
+    approve = client.post(
+        f"/events/{event_id}/approve",
+        json={"reason": "viewer try"},
+        headers={"Authorization": f"Bearer {viewer_token}"},
+    )
+    assert approve.status_code == 40301
+    body = approve.json()
+    assert body["code"] == 40301
+    assert body["message"]["error"] == "permission_denied"
+    assert body["message"]["required_permission"] == "approve_event"

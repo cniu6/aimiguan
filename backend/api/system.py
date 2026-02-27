@@ -67,7 +67,7 @@ class RollbackRequest(BaseModel):
 def _ensure_operator_or_admin(current_user: User, db: Session):
     role = get_user_role(current_user, db)
     if role not in ["admin", "operator"]:
-        raise HTTPException(status_code=40301, detail="权限不足")
+        raise HTTPException(status_code=403, detail="权限不足")
 
 
 def _get_latest_schema_version(db: Session) -> str:
@@ -220,14 +220,11 @@ async def rollback_system(
     available_versions = _get_available_versions(db)
 
     if payload.target_version not in available_versions:
-        raise HTTPException(
-            status_code=40404,
-            detail={
-                "error": "version_not_found",
-                "message": f"目标版本 {payload.target_version} 不在可回滚列表中",
-                "available_versions": available_versions,
-            },
-        )
+        raise HTTPException(status_code=404, detail={
+            "error": "version_not_found",
+            "message": f"目标版本 {payload.target_version} 不在可回滚列表中",
+            "available_versions": available_versions,
+        })
 
     target = db.execute(
         text("""
@@ -241,14 +238,11 @@ async def rollback_system(
     ).fetchone()
 
     if not target:
-        raise HTTPException(
-            status_code=40404,
-            detail={
-                "error": "version_not_found",
-                "message": f"目标版本 {payload.target_version} 不在可回滚列表中",
-                "available_versions": available_versions,
-            },
-        )
+        raise HTTPException(status_code=404, detail={
+            "error": "version_not_found",
+            "message": f"目标版本 {payload.target_version} 不在可回滚列表中",
+            "available_versions": available_versions,
+        })
 
     try:
         _record_release_status(
@@ -265,15 +259,12 @@ async def rollback_system(
         db.commit()
     except Exception as exc:
         db.rollback()
-        raise HTTPException(
-            status_code=50001,
-            detail={
-                "error": "rollback_failed",
-                "message": "数据库迁移版本校验失败",
-                "detail": str(exc),
-                "trace_id": trace_id,
-            },
-        )
+        raise HTTPException(status_code=500, detail={
+            "error": "rollback_failed",
+            "message": "数据库迁移版本校验失败",
+            "detail": str(exc),
+            "trace_id": trace_id,
+        })
 
     AuditService.log(
         db=db,

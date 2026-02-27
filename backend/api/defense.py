@@ -3,13 +3,14 @@ import asyncio
 import hashlib
 import json
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
-from core.database import ExecutionTask, ThreatEvent, get_db
+from core.database import ExecutionTask, SessionLocal, ThreatEvent, User, get_db
+from api.auth import require_permissions
 from services.ai_engine import ai_engine
 from services.audit_service import AuditService
 from services.mcp_client import mcp_client
@@ -409,6 +410,48 @@ async def _execute_block_task(
         db.commit()
 
 
+async def _run_execution_task_background(
+    task_id: int,
+    trace_id: str,
+    session_factory: Callable[[], Session] = SessionLocal,
+) -> None:
+    db = session_factory()
+    try:
+        task = db.query(ExecutionTask).filter(ExecutionTask.id == task_id).first()
+        if task is None:
+            return
+
+        event = db.query(ThreatEvent).filter(ThreatEvent.id == task.event_id).first()
+        if event is None:
+            now = _utc_now()
+            db.query(ExecutionTask).filter(ExecutionTask.id == task_id).update(
+                {
+                    "state": "MANUAL_REQUIRED",
+                    "error_message": "threat_event_not_found",
+                    "ended_at": now,
+                    "updated_at": now,
+                }
+            )
+            db.commit()
+            return
+
+        await _execute_block_task(db=db, event=event, task=task, trace_id=trace_id)
+    except Exception as exc:
+        db.rollback()
+        now = _utc_now()
+        db.query(ExecutionTask).filter(ExecutionTask.id == task_id).update(
+            {
+                "state": "MANUAL_REQUIRED",
+                "error_message": str(exc),
+                "ended_at": now,
+                "updated_at": now,
+            }
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
 def _normalize_list_info(item: HFishListInfo, trace_id: str) -> Dict[str, Any]:
     raw = item.model_dump()
     attack_ip = (item.attack_ip or "").strip()
@@ -585,15 +628,12 @@ async def receive_alert(
             result="failed",
             trace_id=trace_id,
         )
-        raise HTTPException(
-            status_code=50201,
-            detail={
-                "error": "upstream_response_invalid",
-                "message": "HFish 源端响应失败，未进入解析流程",
-                "response_code": alert.response_code,
-                "trace_id": trace_id,
-            },
-        )
+        raise HTTPException(status_code=502, detail={
+            "error": "upstream_response_invalid",
+            "message": "HFish 源端响应失败，未进入解析流程",
+            "response_code": alert.response_code,
+            "trace_id": trace_id,
+        })
 
     normalized_events: List[Dict[str, Any]] = []
     invalid_reasons: List[str] = []
@@ -658,15 +698,12 @@ async def receive_alert(
             result="failed",
             trace_id=trace_id,
         )
-        raise HTTPException(
-            status_code=50004,
-            detail={
-                "error": "alert_operation_failed",
-                "message": "威胁事件写入失败",
-                "detail": str(exc),
-                "trace_id": trace_id,
-            },
-        )
+        raise HTTPException(status_code=500, detail={
+            "error": "alert_operation_failed",
+            "message": "威胁事件写入失败",
+            "detail": str(exc),
+            "trace_id": trace_id,
+        })
 
     ingest_summary = {
         "source": "hfish",
@@ -735,10 +772,7 @@ def _parse_filter_time(value: Optional[str], field_name: str) -> Optional[dateti
         return None
     parsed = _parse_hfish_time(value)
     if parsed is None:
-        raise HTTPException(
-            status_code=40000,
-            detail=f"invalid {field_name}, expected ISO8601 or '%Y-%m-%d %H:%M:%S'",
-        )
+        raise HTTPException(status_code=400, detail=f"invalid {field_name}, expected ISO8601 or '%Y-%m-%d %H:%M:%S'")
     return parsed
 
 
@@ -776,40 +810,32 @@ async def get_pending_events(
     page_size: int = 20,
     sort_by: str = "created_at",
     sort_order: str = "desc",
+    current_user: User = Depends(require_permissions("view_events")),
     db: Session = Depends(get_db),
 ):
     """获取待审批事件列表（支持状态、时间、风险筛选与分页排序）"""
     if page < 1:
-        raise HTTPException(status_code=40000, detail="page must be >= 1")
+        raise HTTPException(status_code=400, detail="page must be >= 1")
     if page_size < 1 or page_size > 100:
-        raise HTTPException(
-            status_code=40000, detail="page_size must be between 1 and 100"
-        )
+        raise HTTPException(status_code=400, detail="page_size must be between 1 and 100")
 
     parsed_start_time = _parse_filter_time(start_time, "start_time")
     parsed_end_time = _parse_filter_time(end_time, "end_time")
     if parsed_start_time and parsed_end_time and parsed_start_time > parsed_end_time:
-        raise HTTPException(status_code=40000, detail="start_time must be <= end_time")
+        raise HTTPException(status_code=400, detail="start_time must be <= end_time")
 
     if min_score is not None and (min_score < 0 or min_score > 100):
-        raise HTTPException(
-            status_code=40000, detail="min_score must be between 0 and 100"
-        )
+        raise HTTPException(status_code=400, detail="min_score must be between 0 and 100")
     if max_score is not None and (max_score < 0 or max_score > 100):
-        raise HTTPException(
-            status_code=40000, detail="max_score must be between 0 and 100"
-        )
+        raise HTTPException(status_code=400, detail="max_score must be between 0 and 100")
     if min_score is not None and max_score is not None and min_score > max_score:
-        raise HTTPException(status_code=40000, detail="min_score must be <= max_score")
+        raise HTTPException(status_code=400, detail="min_score must be <= max_score")
 
     normalized_risk_level: Optional[str] = None
     if risk_level is not None:
         normalized_risk_level = str(risk_level).strip().upper()
         if normalized_risk_level not in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}:
-            raise HTTPException(
-                status_code=40000,
-                detail="risk_level must be one of LOW, MEDIUM, HIGH, CRITICAL",
-            )
+            raise HTTPException(status_code=400, detail="risk_level must be one of LOW, MEDIUM, HIGH, CRITICAL")
 
     normalized_sort_by = str(sort_by).strip()
     sort_field_map = {
@@ -820,14 +846,11 @@ async def get_pending_events(
         "status": ThreatEvent.status,
     }
     if normalized_sort_by not in sort_field_map:
-        raise HTTPException(
-            status_code=40000,
-            detail="sort_by must be one of created_at, updated_at, ai_score, ip, status",
-        )
+        raise HTTPException(status_code=400, detail="sort_by must be one of created_at, updated_at, ai_score, ip, status")
 
     normalized_sort_order = str(sort_order).strip().lower()
     if normalized_sort_order not in {"asc", "desc"}:
-        raise HTTPException(status_code=40000, detail="sort_order must be asc or desc")
+        raise HTTPException(status_code=400, detail="sort_order must be asc or desc")
 
     query = db.query(ThreatEvent)
     normalized_status = str(status or "").strip().upper()
@@ -888,9 +911,11 @@ async def get_pending_events(
 @router.post("/events/{event_id}/approve")
 @compat_router.post("/events/{event_id}/approve", include_in_schema=False)
 async def approve_event(
+    background_tasks: BackgroundTasks,
     event_id: int,
     req: ApproveRequest,
     request: Request,
+    current_user: User = Depends(require_permissions("approve_event")),
     db: Session = Depends(get_db),
 ):
     """批准处置事件"""
@@ -917,8 +942,20 @@ async def approve_event(
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    await _execute_block_task(db=db, event=event, task=task, trace_id=trace_id)
-    db.refresh(task)
+    task_id = _safe_int(cast(Optional[int], getattr(task, "id", None)), 0)
+    if task_id <= 0:
+        raise HTTPException(status_code=500, detail="execution_task_create_failed")
+    request_session_factory = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=db.get_bind(),
+    )
+    background_tasks.add_task(
+        _run_execution_task_background,
+        task_id,
+        trace_id,
+        request_session_factory,
+    )
 
     task_row = (
         db.query(ExecutionTask.state, ExecutionTask.retry_count)
@@ -947,6 +984,7 @@ async def approve_event(
 async def reject_event(
     event_id: int,
     req: ApproveRequest,
+    current_user: User = Depends(require_permissions("reject_event")),
     db: Session = Depends(get_db),
 ):
     """驳回处置事件"""

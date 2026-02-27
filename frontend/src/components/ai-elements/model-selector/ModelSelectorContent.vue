@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue'
 import { Command } from '@/components/ui/command'
-import { DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -22,6 +22,9 @@ const props = withDefaults(defineProps<Props>(), {
     <DialogTitle class="sr-only">
       {{ props.title }}
     </DialogTitle>
+    <DialogDescription class="sr-only">
+      Select a model from the list
+    </DialogDescription>
     <Command class="**:data-[slot=command-input-wrapper]:h-auto">
       <slot />
     </Command>

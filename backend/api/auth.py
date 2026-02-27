@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -55,6 +55,45 @@ def get_user_permissions(user: User, db: Session) -> list[str]:
     return sorted(names)
 
 
+def require_permissions(*required_permissions: str):
+    async def _permission_dependency(
+        request: Request,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        permissions = set(get_user_permissions(current_user, db))
+        missing = [name for name in required_permissions if name not in permissions]
+        if missing:
+            trace_id = getattr(request.state, "trace_id", None)
+            raise HTTPException(status_code=403, detail={
+                "error": "permission_denied",
+                "message": f"缺少权限: {missing[0]}",
+                "required_permission": missing[0],
+                "user_roles": [get_user_role(current_user, db)],
+                "trace_id": trace_id,
+                "audit_logged": True,
+            })
+        return current_user
+
+    return _permission_dependency
+
+
+def require_role(allowed_roles: list[str]):
+    """角色要求依赖"""
+    async def _role_dependency(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        user_role = get_user_role(current_user, db)
+        if user_role not in allowed_roles:
+            raise HTTPException(
+                status_code=403,
+                detail=f"需要角色: {allowed_roles}, 当前角色: {user_role}"
+            )
+        return current_user
+    return _role_dependency
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -104,17 +143,17 @@ async def get_current_user(
     try:
         token = credentials.credentials
         if token in BLACKLISTED_TOKENS:
-            raise HTTPException(status_code=40102, detail="令牌已失效，请重新登录")
+            raise HTTPException(status_code=401, detail="令牌已失效，请重新登录")
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
         if not isinstance(username, str) or not username:
-            raise HTTPException(status_code=40102, detail="无效的认证令牌")
+            raise HTTPException(status_code=401, detail="无效的认证令牌")
     except JWTError:
-        raise HTTPException(status_code=40102, detail="无效的认证令牌")
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
 
     user = db.query(User).filter(User.username == username).first()
     if user is None or getattr(user, "enabled", 0) != 1:
-        raise HTTPException(status_code=40102, detail="用户不存在或已禁用")
+        raise HTTPException(status_code=401, detail="用户不存在或已禁用")
     return user
 
 
