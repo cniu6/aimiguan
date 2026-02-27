@@ -14,6 +14,40 @@ from api.auth import get_current_user, require_role
 
 router = APIRouter(prefix="/api/v1/scan", tags=["scan"])
 
+# ===== 扫描 Profile 白名单（禁止前端自由拼接危险参数）=====
+SCAN_PROFILES = {
+    "quick": {
+        "name": "快速扫描",
+        "description": "仅扫描常用端口（Top 100），速度最快",
+        "nmap_args": ["-sS", "-T4", "-F"],
+        "estimated_seconds": 30,
+        "risk_level": "low",
+    },
+    "default": {
+        "name": "标准扫描",
+        "description": "扫描 1-1000 端口，含服务版本探测",
+        "nmap_args": ["-sS", "-sV", "-T4", "-p", "1-1000"],
+        "estimated_seconds": 120,
+        "risk_level": "low",
+    },
+    "comprehensive": {
+        "name": "全面扫描",
+        "description": "全端口扫描，含 OS 探测和脚本引擎（耗时较长）",
+        "nmap_args": ["-sS", "-sV", "-O", "-A", "-T4", "-p-"],
+        "estimated_seconds": 600,
+        "risk_level": "medium",
+        "required_role": "admin",
+    },
+    "vuln": {
+        "name": "漏洞扫描",
+        "description": "使用 NSE vuln 脚本集进行漏洞检测",
+        "nmap_args": ["-sV", "--script=vuln", "-T4"],
+        "estimated_seconds": 300,
+        "risk_level": "medium",
+        "required_role": "operator",
+    },
+}
+
 ASSET_TARGET_TYPES = {"IP", "CIDR", "DOMAIN"}
 ASSET_DEFAULT_TAG_BY_TYPE = {
     "IP": "ip",
@@ -92,8 +126,9 @@ class CreateScanRequest(BaseModel):
     profile: Optional[str] = Field(
         "default", description="扫描配置: quick/default/comprehensive/vuln"
     )
-    script_set: Optional[str] = Field(None, description="NSE脚本集")
+    script_set: Optional[str] = Field(None, description="NSE脚本集（仅 admin 可指定）")
     asset_id: Optional[int] = Field(None, description="关联资产ID")
+    timeout_seconds: Optional[int] = Field(None, ge=30, le=3600, description="超时秒数（30-3600）")
 
 
 class CreateAssetRequest(BaseModel):
@@ -119,6 +154,41 @@ class ScanTaskResponse(BaseModel):
     tool_name: Optional[str]
     state: str
     created_at: datetime
+
+
+# ===== 扫描 Profile 查询 API =====
+
+
+@router.get("/profiles")
+async def get_scan_profiles(
+    current_user: object = Depends(get_current_user),
+):
+    """获取允许的扫描配置模板列表（白名单，前端只能从此列表选择）"""
+    user_role = "viewer"
+    if isinstance(current_user, dict):
+        user_role = current_user.get("role", "viewer")
+    else:
+        user_role = getattr(current_user, "role", "viewer")
+
+    result = []
+    for key, profile in SCAN_PROFILES.items():
+        required_role = profile.get("required_role")
+        available = True
+        if required_role == "admin" and user_role not in ("admin",):
+            available = False
+        elif required_role == "operator" and user_role not in ("operator", "admin"):
+            available = False
+        result.append(
+            {
+                "key": key,
+                "name": profile["name"],
+                "description": profile["description"],
+                "estimated_seconds": profile["estimated_seconds"],
+                "risk_level": profile["risk_level"],
+                "available": available,
+            }
+        )
+    return APIResponse.success(result)
 
 
 # ===== 资产管理 API =====
@@ -180,10 +250,13 @@ async def create_asset(
 async def get_assets(
     target_type: Optional[str] = None,
     enabled: Optional[bool] = None,
+    keyword: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
     current_user: object = Depends(get_current_user),
 ):
-    """获取资产列表"""
+    """获取资产列表（支持关键字搜索、类型筛选、启停筛选、分页）"""
     query = db.query(Asset)
 
     if target_type:
@@ -191,23 +264,33 @@ async def get_assets(
         query = query.filter(Asset.target_type == normalized_target_type)
     if enabled is not None:
         query = query.filter(Asset.enabled == (1 if enabled else 0))
+    if keyword:
+        query = query.filter(Asset.target.contains(keyword.strip()))
 
-    assets = query.order_by(Asset.created_at.desc()).limit(200).all()
+    total = query.count()
+    page_size = min(page_size, 100)
+    offset = (page - 1) * page_size
+    assets = query.order_by(Asset.created_at.desc()).offset(offset).limit(page_size).all()
 
     return APIResponse.success(
-        [
-            {
-                "id": a.id,
-                "target": a.target,
-                "target_type": a.target_type,
-                "tags": a.tags,
-                "priority": a.priority,
-                "enabled": bool(a.enabled),
-                "description": a.description,
-                "created_at": a.created_at.isoformat() if a.created_at else None,
-            }
-            for a in assets
-        ]
+        {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": [
+                {
+                    "id": a.id,
+                    "target": a.target,
+                    "target_type": a.target_type,
+                    "tags": a.tags,
+                    "priority": a.priority,
+                    "enabled": bool(a.enabled),
+                    "description": a.description,
+                    "created_at": a.created_at.isoformat() if a.created_at else None,
+                }
+                for a in assets
+            ],
+        }
     )
 
 
@@ -313,6 +396,33 @@ async def delete_asset(
     return APIResponse.success(message="Asset deleted")
 
 
+@router.patch("/assets/{asset_id}/toggle")
+async def toggle_asset(
+    asset_id: int,
+    db: Session = Depends(get_db),
+    current_user: object = Depends(require_role(["operator", "admin"])),
+):
+    """快捷启停资产"""
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    asset.enabled = 0 if asset.enabled else 1
+    db.commit()
+
+    AuditService.log(
+        db=db,
+        actor=_actor_name(current_user),
+        action="asset_toggle",
+        target=f"asset:{asset_id}",
+        target_type="asset",
+        result="success",
+        reason=f"资产状态切换为: {'启用' if asset.enabled else '禁用'}",
+    )
+
+    return APIResponse.success({"enabled": bool(asset.enabled)}, message="Asset toggled")
+
+
 # ===== 扫描任务 API =====
 
 
@@ -325,6 +435,27 @@ async def create_scan_task(
 ):
     """创建扫描任务并立即调度执行"""
 
+    # 验证 profile 白名单
+    profile = req.profile or "default"
+    if profile not in SCAN_PROFILES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"无效 profile: {profile}. 仅支持: {list(SCAN_PROFILES.keys())}",
+        )
+
+    # 权限校验：comprehensive/vuln profile 需要特定角色
+    user_role = "viewer"
+    if isinstance(current_user, dict):
+        user_role = current_user.get("role", "viewer")
+    else:
+        user_role = getattr(current_user, "role", "viewer")
+
+    required_role = SCAN_PROFILES[profile].get("required_role")
+    if required_role == "admin" and user_role != "admin":
+        raise HTTPException(status_code=403, detail=f"该扫描配置需要 admin 权限")
+    if required_role == "operator" and user_role not in ("operator", "admin"):
+        raise HTTPException(status_code=403, detail=f"该扫描配置需要 operator 权限")
+
     # 验证资产ID（如果提供）
     if req.asset_id:
         asset = db.query(Asset).filter(Asset.id == req.asset_id).first()
@@ -334,7 +465,7 @@ async def create_scan_task(
     # 创建任务记录
     target_type = req.target_type or "host"
     tool_name = req.tool_name or "nmap"
-    profile = req.profile or "default"
+    timeout_seconds = req.timeout_seconds or SCAN_PROFILES[profile]["estimated_seconds"] * 5
 
     task = ScanTask(
         asset_id=req.asset_id or 0,
@@ -344,6 +475,7 @@ async def create_scan_task(
         profile=profile,
         script_set=req.script_set,
         state="CREATED",
+        timeout_seconds=timeout_seconds,
     )
     db.add(task)
     db.commit()
@@ -358,6 +490,7 @@ async def create_scan_task(
             profile=profile,
             script_set=req.script_set,
             operator=_actor_name(current_user),
+            timeout_seconds=timeout_seconds,
         )
     except RuntimeError as e:
         # 并发限制，任务仍创建但标记为等待
@@ -378,27 +511,50 @@ async def create_scan_task(
 @router.get("/tasks")
 async def get_scan_tasks(
     state: Optional[str] = None,
-    limit: int = 100,
+    profile: Optional[str] = None,
+    target: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
     current_user: object = Depends(get_current_user),
 ):
-    """获取扫描任务列表"""
+    """获取扫描任务列表（支持状态/配置/目标筛选、分页）"""
     query = db.query(ScanTask)
     if state:
         query = query.filter(ScanTask.state == state)
+    if profile:
+        query = query.filter(ScanTask.profile == profile)
+    if target:
+        query = query.filter(ScanTask.target.contains(target.strip()))
 
-    tasks = query.order_by(ScanTask.created_at.desc()).limit(limit).all()
+    total = query.count()
+    page_size = min(page_size, 100)
+    offset = (page - 1) * page_size
+    tasks = query.order_by(ScanTask.created_at.desc()).offset(offset).limit(page_size).all()
+
     return APIResponse.success(
-        [
-            {
-                "id": t.id,
-                "target": t.target,
-                "tool_name": t.tool_name,
-                "state": t.state,
-                "created_at": t.created_at.isoformat() if t.created_at else None,
-            }
-            for t in tasks
-        ]
+        {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": [
+                {
+                    "id": t.id,
+                    "target": t.target,
+                    "target_type": t.target_type,
+                    "tool_name": t.tool_name,
+                    "profile": t.profile,
+                    "state": t.state,
+                    "priority": t.priority,
+                    "timeout_seconds": t.timeout_seconds,
+                    "error_message": t.error_message,
+                    "started_at": t.started_at.isoformat() if t.started_at else None,
+                    "ended_at": t.ended_at.isoformat() if t.ended_at else None,
+                    "created_at": t.created_at.isoformat() if t.created_at else None,
+                }
+                for t in tasks
+            ],
+        }
     )
 
 
@@ -504,37 +660,50 @@ async def get_findings(
     severity: Optional[str] = None,
     status: Optional[str] = None,
     scan_task_id: Optional[int] = None,
-    limit: int = 100,
+    asset: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
     db: Session = Depends(get_db),
     current_user: object = Depends(get_current_user),
 ):
-    """获取扫描发现列表"""
+    """获取扫描发现列表（支持多维度筛选和分页）"""
     query = db.query(ScanFinding)
 
     if severity:
-        query = query.filter(ScanFinding.severity == severity)
+        query = query.filter(ScanFinding.severity == severity.upper())
     if status:
-        query = query.filter(ScanFinding.status == status)
+        query = query.filter(ScanFinding.status == status.upper())
     if scan_task_id:
         query = query.filter(ScanFinding.scan_task_id == scan_task_id)
+    if asset:
+        query = query.filter(ScanFinding.asset.contains(asset.strip()))
 
-    findings = query.order_by(ScanFinding.created_at.desc()).limit(limit).all()
+    total = query.count()
+    page_size = min(page_size, 100)
+    offset = (page - 1) * page_size
+    findings = query.order_by(ScanFinding.created_at.desc()).offset(offset).limit(page_size).all()
 
     return APIResponse.success(
-        [
-            {
-                "id": f.id,
-                "scan_task_id": f.scan_task_id,
-                "asset": f.asset,
-                "port": f.port,
-                "service": f.service,
-                "severity": f.severity,
-                "status": f.status,
-                "evidence": f.evidence[:200] if f.evidence else None,
-                "created_at": f.created_at.isoformat() if f.created_at else None,
-            }
-            for f in findings
-        ]
+        {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": [
+                {
+                    "id": f.id,
+                    "scan_task_id": f.scan_task_id,
+                    "asset": f.asset,
+                    "port": f.port,
+                    "service": f.service,
+                    "severity": f.severity,
+                    "status": f.status,
+                    "cve": f.cve,
+                    "evidence": f.evidence[:300] if f.evidence else None,
+                    "created_at": f.created_at.isoformat() if f.created_at else None,
+                }
+                for f in findings
+            ],
+        }
     )
 
 

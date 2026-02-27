@@ -269,17 +269,17 @@ class Scanner:
         profile: Optional[str] = None,
         script_set: Optional[str] = None,
         operator: Optional[str] = None,
+        timeout_seconds: Optional[int] = None,
     ) -> None:
         """调度扫描任务（异步执行，带完整状态机）"""
         if len(self.running_tasks) >= self.max_concurrent:
             raise RuntimeError("Too many concurrent scans")
 
-        # 创建异步任务
-        task = asyncio.create_task(
-            self._run_scan_workflow(
-                task_id, target, tool_name, profile, script_set, operator
-            )
+        # 创建异步任务（用 asyncio.wait_for 包裹超时控制）
+        coro = self._run_scan_workflow(
+            task_id, target, tool_name, profile, script_set, operator, timeout_seconds
         )
+        task = asyncio.create_task(coro)
         self.running_tasks[task_id] = task
 
         # 清理回调
@@ -296,8 +296,9 @@ class Scanner:
         profile: Optional[str],
         script_set: Optional[str],
         operator: Optional[str],
+        timeout_seconds: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """完整的扫描工作流（含状态机推进）"""
+        """完整的扫描工作流（含状态机推进、超时控制、发现去重）"""
         db = SessionLocal()
         trace_id = f"scan_{task_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
@@ -306,6 +307,9 @@ class Scanner:
             scan_task = db.query(ScanTask).filter(ScanTask.id == task_id).first()
             if not scan_task:
                 return {"error": "Task not found"}
+
+            # 从任务记录中读取超时设置
+            effective_timeout = timeout_seconds or scan_task.timeout_seconds or 3600
 
             scan_task.state = "DISPATCHED"
             scan_task.trace_id = trace_id
@@ -325,13 +329,31 @@ class Scanner:
                 target_type="scan_task",
                 result="success",
                 trace_id=trace_id,
-                reason=f"开始扫描目标: {target}",
+                reason=f"开始扫描目标: {target}，超时: {effective_timeout}s",
             )
 
-            # 3. 执行扫描
-            result = await self.execute_scan(
-                task_id, target, tool_name, profile, script_set
-            )
+            # 3. 执行扫描（带超时）
+            try:
+                result = await asyncio.wait_for(
+                    self.execute_scan(task_id, target, tool_name, profile, script_set),
+                    timeout=effective_timeout,
+                )
+            except asyncio.TimeoutError:
+                scan_task.state = "FAILED"
+                scan_task.error_message = f"Scan timeout after {effective_timeout}s"
+                scan_task.ended_at = datetime.utcnow()
+                db.commit()
+                AuditService.log(
+                    db=db,
+                    actor=operator or "system",
+                    action="scan_timeout",
+                    target=f"task:{task_id}",
+                    target_type="scan_task",
+                    result="failed",
+                    trace_id=trace_id,
+                    reason=f"超时: {effective_timeout}s",
+                )
+                return {"task_id": task_id, "target": target, "status": "timeout", "findings": []}
 
             if result["status"] == "failed":
                 # 扫描失败
@@ -353,17 +375,33 @@ class Scanner:
 
                 return result
 
-            # 4. 解析结果并入库
+            # 4. 解析结果并入库（带去重：同一 scan_task_id + asset + port + service）
             findings = result.get("findings", [])
             scan_task.raw_output_path = result.get("output_file", "")
 
-            # 保存发现项
+            new_count = 0
+            dedup_count = 0
             for finding in findings:
                 severity = NmapParser.determine_severity(
                     finding.get("service", ""),
                     finding.get("port", 0),
                     finding.get("scripts", []),
                 )
+
+                # 去重检查：同一任务内 asset+port+service 不重复入库
+                existing_finding = (
+                    db.query(ScanFinding)
+                    .filter(
+                        ScanFinding.scan_task_id == task_id,
+                        ScanFinding.asset == target,
+                        ScanFinding.port == finding.get("port"),
+                        ScanFinding.service == finding.get("service"),
+                    )
+                    .first()
+                )
+                if existing_finding:
+                    dedup_count += 1
+                    continue
 
                 # 构建证据字符串
                 evidence = f"Port: {finding.get('port')}/{finding.get('protocol')}\n"
@@ -380,14 +418,18 @@ class Scanner:
                     asset=target,
                     port=finding.get("port"),
                     service=finding.get("service"),
-                    vuln_id=None,  # 可从脚本输出中提取
-                    cve=None,  # 可从脚本输出中提取
+                    vuln_id=None,
+                    cve=None,
                     severity=severity,
                     evidence=evidence[:2000],
                     status="NEW",
                     trace_id=trace_id,
                 )
                 db.add(scan_finding)
+                new_count += 1
+
+            if dedup_count:
+                print(f"Task {task_id}: skipped {dedup_count} duplicate findings")
 
             # 5. AI 分析 (记录到日志，不存储到数据库)
             if findings:
@@ -421,7 +463,7 @@ class Scanner:
                 target_type="scan_task",
                 result="success",
                 trace_id=trace_id,
-                reason=f"扫描完成，发现 {len(findings)} 个开放端口/服务",
+                reason=f"扫描完成，新增 {new_count} 条发现（跳过 {dedup_count} 条重复）",
             )
 
             return result
