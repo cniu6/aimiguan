@@ -5,6 +5,7 @@ from typing import List, Optional
 from datetime import datetime
 import ipaddress
 import re
+import time
 
 from core.database import get_db, ScanTask, ScanFinding, Asset
 from core.response import APIResponse
@@ -466,6 +467,7 @@ async def create_scan_task(
     target_type = req.target_type or "host"
     tool_name = req.tool_name or "nmap"
     timeout_seconds = req.timeout_seconds or SCAN_PROFILES[profile]["estimated_seconds"] * 5
+    trace_id = f"scan_{int(time.time() * 1000)}_{id(req)}"
 
     task = ScanTask(
         asset_id=req.asset_id or 0,
@@ -476,6 +478,7 @@ async def create_scan_task(
         script_set=req.script_set,
         state="CREATED",
         timeout_seconds=timeout_seconds,
+        trace_id=trace_id,
     )
     db.add(task)
     db.commit()

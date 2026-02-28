@@ -62,8 +62,8 @@ class ThreatEvent(Base):
     trace_id = Column(String, nullable=False, index=True)
     raw_payload = Column(Text)
     extra_json = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class Asset(Base):
@@ -76,7 +76,7 @@ class Asset(Base):
     enabled = Column(Integer, default=1)
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=lambda: datetime.now(timezone.utc))
 
 
 class ExecutionTask(Base):
@@ -181,7 +181,7 @@ class AIChatSession(Base):
     context_type = Column(String)
     context_id = Column(Integer)
     operator = Column(String, nullable=False)
-    started_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     ended_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
 

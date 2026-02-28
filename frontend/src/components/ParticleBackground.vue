@@ -4,15 +4,15 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useActiveMode } from '@/composables/useActiveMode'
 
-const route = useRoute()
+const { activeMode } = useActiveMode()
 const canvas = ref<HTMLCanvasElement>()
 let ctx: CanvasRenderingContext2D | null = null
 let particles: Particle[] = []
 let animationId: number
 
-const isProbeMode = computed(() => route.path.startsWith('/probe'))
+const isProbeMode = computed(() => activeMode.value === 'probe')
 
 interface Particle {
   x: number

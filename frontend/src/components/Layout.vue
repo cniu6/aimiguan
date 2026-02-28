@@ -333,6 +333,7 @@
 import { computed, nextTick, onBeforeUpdate, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useActiveMode } from '@/composables/useActiveMode'
 import { authApi } from '../api/auth'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -376,6 +377,7 @@ type ModeKey = 'defense' | 'probe'
 
 const router = useRouter()
 const route = useRoute()
+const { activeMode, lastActiveMode } = useActiveMode()
 
 const username = ref('user')
 const role = ref('viewer')
@@ -652,11 +654,6 @@ const modeDefaultRoute: Record<ModeKey, string> = {
   probe: '/probe/dashboard',
 }
 
-const activeMode = computed<ModeKey>(() => {
-  if (route.path.startsWith('/probe')) return 'probe'
-  return 'defense'
-})
-
 const activeModeLabel = computed(() => {
   return activeMode.value === 'defense' ? '防御坚守模式' : '主动探测模式'
 })
@@ -689,6 +686,15 @@ const resetAnimatedState = () => {
 }
 
 const runModeTransition = (targetMode: ModeKey) => {
+  // Check if current page is mode-neutral (settings, profile, etc.)
+  const isNeutralPage = !route.path.startsWith('/defense') && !route.path.startsWith('/probe')
+  
+  if (isNeutralPage) {
+    // For neutral pages, just update the last active mode without navigation
+    lastActiveMode.value = targetMode
+    return
+  }
+
   const sidebarEl = sidebarRef.value
   const contentEl = contentRef.value
   const shellEl = shellRef.value
@@ -705,7 +711,6 @@ const runModeTransition = (targetMode: ModeKey) => {
 
   if (modeTimeline) {
     modeTimeline.kill()
-    modeTimeline = null
   }
 
   isModeSwitching.value = true
