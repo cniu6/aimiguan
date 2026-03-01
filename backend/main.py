@@ -12,7 +12,7 @@ from core.response import (
     general_exception_handler,
 )
 from core.middleware import TraceIDMiddleware
-from api import auth, defense, scan, report, ai_chat, tts, firewall, system
+from api import auth, defense, scan, report, ai_chat, tts, firewall, system, push
 
 
 def print_banner():
@@ -32,7 +32,7 @@ def print_banner():
     """
     print(banner)
     print("🚀 系统启动中...")
-    print(f"⏰ 启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"⏰ 启动时间: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 
@@ -93,6 +93,7 @@ app.include_router(report.router)
 app.include_router(ai_chat.router)
 app.include_router(tts.router)
 app.include_router(firewall.router)
+app.include_router(push.router)
 
 
 @app.get("/api/health")

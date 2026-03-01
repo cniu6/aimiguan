@@ -5,8 +5,9 @@ from typing import Optional
 from datetime import datetime, timezone
 import uuid
 
-from core.database import get_db, AIReport
+from core.database import get_db, AIReport, User
 from core.response import APIResponse
+from api.auth import require_permissions
 
 router = APIRouter(prefix="/api/v1/report", tags=["report"])
 
@@ -20,6 +21,7 @@ class GenerateReportRequest(BaseModel):
 async def generate_report(
     req: GenerateReportRequest,
     request: Request,
+    current_user: User = Depends(require_permissions("generate_report")),
     db: Session = Depends(get_db),
 ):
     """生成 AI 报告"""
