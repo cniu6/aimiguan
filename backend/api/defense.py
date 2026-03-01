@@ -351,6 +351,8 @@ async def _execute_block_task(
 
         attempt += 1
         error_message = _extract_mcp_error(result)
+        is_retryable = result.get("retryable", True)
+        
         db.query(ExecutionTask).filter(ExecutionTask.id == task_id).update(
             {
                 "retry_count": attempt,
@@ -359,7 +361,7 @@ async def _execute_block_task(
             }
         )
 
-        if attempt >= MAX_BLOCK_RETRIES:
+        if not is_retryable or attempt >= MAX_BLOCK_RETRIES:
             end_time = _utc_now()
             db.query(ExecutionTask).filter(ExecutionTask.id == task_id).update(
                 {
@@ -759,7 +761,11 @@ async def receive_alert(
 @compat_router.get(
     "/events", response_model=List[EventResponse], include_in_schema=False
 )
-async def get_events(status: Optional[str] = None, db: Session = Depends(get_db)):
+async def get_events(
+    status: Optional[str] = None,
+    current_user: User = Depends(require_permissions("view_events")),
+    db: Session = Depends(get_db)
+):
     """获取威胁事件列表"""
     query = db.query(ThreatEvent)
     if status:

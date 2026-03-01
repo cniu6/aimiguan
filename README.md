@@ -2313,10 +2313,10 @@ requirements.txt
 - [x] 3.20 验证：从 HFish 入站到封禁闭环跑通，且字段缺失时可回退到 `extra_json`。
 
 ### 当前问题与未来规划（TODO）
-- [ ] P-1 将 `backend/services/mcp_client.py` 从占位实现替换为真实 `stdio/sse` MCP 通信，补充失败分类（可重试/不可重试）。
-- [ ] P-2 将当前审批接口内同步执行的重试流程，重构为后台执行器（避免长请求阻塞），并保留 `QUEUED/RUNNING/RETRYING/SUCCESS/MANUAL_REQUIRED` 状态机。
+- [ ] P-1 将 `backend/services/mcp_client.py` 从占位实现替换为真实 `stdio/sse` MCP 通信，~~补充失败分类（可重试/不可重试）~~✅。
+- [x] P-2 将当前审批接口内同步执行的重试流程，重构为后台执行器（避免长请求阻塞），并保留 `QUEUED/RUNNING/RETRYING/SUCCESS/MANUAL_REQUIRED` 状态机。
 - [x] P-3 补齐 Step 3.16：新增待审批列表接口（时间范围、风险分、来源、状态组合筛选）及分页排序。
-- [ ] P-4 收敛时间实现：清理 `datetime.utcnow()` 相关告警，统一为时区感知 UTC 时间。
+- [x] P-4 收敛时间实现：清理 `datetime.utcnow()` 相关告警，统一为时区感知 UTC 时间。
 - [ ] P-5 收敛 Step 2 剩余项：完善 RBAC 权限点绑定（2.5）、前端路由守卫（2.6）、防御/探测面板视图切换体验（2.17）。
 - [x] P-6 进入 Step 4 探测扫描链路开发（4.1-4.15 已完成），资产 -> 任务 -> 结果最小闭环已打通，4.16 验证待执行。
 

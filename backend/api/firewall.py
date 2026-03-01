@@ -5,7 +5,8 @@ from typing import Optional
 import hashlib
 import uuid
 
-from core.database import get_db, FirewallSyncTask
+from core.database import get_db, FirewallSyncTask, User
+from api.auth import require_permissions
 
 router = APIRouter(prefix="/api/v1/firewall", tags=["firewall"])
 
@@ -15,7 +16,12 @@ class FirewallSyncRequest(BaseModel):
     firewall_vendor: Optional[str] = "generic"
 
 @router.post("/sync")
-async def sync_to_firewall(req: FirewallSyncRequest, request: Request, db: Session = Depends(get_db)):
+async def sync_to_firewall(
+    req: FirewallSyncRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("firewall_sync"))
+):
     """同步封堵到外部防火墙"""
     trace_id = getattr(request.state, "trace_id", str(uuid.uuid4()))
     
@@ -55,7 +61,11 @@ async def sync_to_firewall(req: FirewallSyncRequest, request: Request, db: Sessi
     }
 
 @router.get("/tasks/{task_id}")
-async def get_firewall_task(task_id: int, db: Session = Depends(get_db)):
+async def get_firewall_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("view_firewall_tasks"))
+):
     """获取防火墙同步任务状态"""
     task = db.query(FirewallSyncTask).filter(FirewallSyncTask.id == task_id).first()
     if not task:

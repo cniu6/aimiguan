@@ -75,8 +75,8 @@ class Asset(Base):
     priority = Column(Integer, default=5)
     enabled = Column(Integer, default=1)
     description = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class ExecutionTask(Base):
@@ -91,8 +91,8 @@ class ExecutionTask(Base):
     started_at = Column(DateTime)
     ended_at = Column(DateTime)
     trace_id = Column(String, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class ScanTask(Base):
@@ -113,8 +113,8 @@ class ScanTask(Base):
     started_at = Column(DateTime)
     ended_at = Column(DateTime)
     trace_id = Column(String, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class ScanFinding(Base):
@@ -130,8 +130,9 @@ class ScanFinding(Base):
     evidence = Column(Text)
     status = Column(String, nullable=False, default="NEW")
     trace_id = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class Device(Base):
@@ -144,8 +145,8 @@ class Device(Base):
     device_type = Column(String)
     enabled = Column(Integer, default=1)
     description = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class Credential(Base):
@@ -155,8 +156,8 @@ class Credential(Base):
     username = Column(String, nullable=False)
     secret_ciphertext = Column(Text, nullable=False)
     key_version = Column(String, default="v1")
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class AIDecisionLog(Base):
@@ -172,7 +173,7 @@ class AIDecisionLog(Base):
     prompt_tokens = Column(Integer)
     completion_tokens = Column(Integer)
     trace_id = Column(String, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class AIChatSession(Base):
@@ -183,7 +184,7 @@ class AIChatSession(Base):
     operator = Column(String, nullable=False)
     started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     ended_at = Column(DateTime)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class AIChatMessage(Base):
@@ -193,7 +194,7 @@ class AIChatMessage(Base):
     role = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     evidence_refs = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class AIReport(Base):
@@ -205,7 +206,7 @@ class AIReport(Base):
     detail_path = Column(String)
     format = Column(String, default="markdown")
     trace_id = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class AITTSTask(Base):
@@ -219,8 +220,8 @@ class AITTSTask(Base):
     state = Column(String, nullable=False, default="PENDING")
     error_message = Column(Text)
     trace_id = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class PluginRegistry(Base):
@@ -231,8 +232,8 @@ class PluginRegistry(Base):
     endpoint = Column(String)
     config_json = Column(Text)
     enabled = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class PushChannel(Base):
@@ -243,8 +244,8 @@ class PushChannel(Base):
     target = Column(String, nullable=False)
     config_json = Column(Text)
     enabled = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class FirewallSyncTask(Base):
@@ -260,8 +261,8 @@ class FirewallSyncTask(Base):
     response_digest = Column(String)
     error_message = Column(Text)
     trace_id = Column(String, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class ModelProfile(Base):
@@ -274,8 +275,8 @@ class ModelProfile(Base):
     priority = Column(Integer, default=10)
     enabled = Column(Integer, default=1)
     config_json = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 # ── RBAC ──
@@ -286,8 +287,8 @@ class Role(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, nullable=False)
     description = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class Permission(Base):
@@ -297,7 +298,7 @@ class Permission(Base):
     resource = Column(String)
     action = Column(String)
     description = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class UserRole(Base):
@@ -308,8 +309,8 @@ class UserRole(Base):
     granted_by = Column(String)
     reason = Column(Text)
     trace_id = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class RolePermission(Base):
@@ -317,7 +318,7 @@ class RolePermission(Base):
     id = Column(Integer, primary_key=True, index=True)
     role_id = Column(Integer, ForeignKey("role.id"), nullable=False)
     permission_id = Column(Integer, ForeignKey("permission.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class User(Base):
@@ -328,8 +329,8 @@ class User(Base):
     email = Column(String)
     full_name = Column(String)
     enabled = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     user_roles = relationship("UserRole", backref="user", lazy="joined")
 
 
@@ -347,8 +348,8 @@ class ReleaseHistory(Base):
     deployed_by = Column(String)
     rollback_reason = Column(Text)
     trace_id = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class SystemConfigSnapshot(Base):
@@ -360,7 +361,7 @@ class SystemConfigSnapshot(Base):
     is_sensitive = Column(Integer, nullable=False, default=0)
     env = Column(String, nullable=False, index=True)
     loaded_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 # ── Audit ──
@@ -378,7 +379,7 @@ class AuditLog(Base):
     result = Column(String, nullable=False)
     error_message = Column(Text)
     trace_id = Column(String, nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 def init_db():

@@ -78,24 +78,34 @@ def setup_database():
     )
 
     # 创建权限并绑定角色
-    db.execute(
-        text(
-            """
-            INSERT INTO permission (name, resource, action, description, created_at)
-            VALUES ('manage_system', 'system', 'manage', '系统管理权限', :now)
-            """
-        ),
-        {"now": now},
-    )
-    db.execute(
-        text(
-            """
-            INSERT INTO role_permission (role_id, permission_id, created_at)
-            VALUES (1, 1, :now)
-            """
-        ),
-        {"now": now},
-    )
+    permissions = [
+        ('manage_system', 'system', 'manage', '系统管理权限'),
+        ('system_rollback', 'system', 'rollback', '系统回滚权限'),
+        ('set_system_mode', 'system', 'set_mode', '系统模式切换权限'),
+        ('view_events', 'events', 'view', '查看事件权限'),
+        ('approve_event', 'events', 'approve', '批准事件权限'),
+        ('reject_event', 'events', 'reject', '驳回事件权限'),
+    ]
+    
+    for idx, (name, resource, action, desc) in enumerate(permissions, start=1):
+        db.execute(
+            text(
+                """
+                INSERT INTO permission (name, resource, action, description, created_at)
+                VALUES (:name, :resource, :action, :desc, :now)
+                """
+            ),
+            {"name": name, "resource": resource, "action": action, "desc": desc, "now": now},
+        )
+        db.execute(
+            text(
+                """
+                INSERT INTO role_permission (role_id, permission_id, created_at)
+                VALUES (1, :perm_id, :now)
+                """
+            ),
+            {"perm_id": idx, "now": now},
+        )
 
     # 插入版本历史
     db.execute(

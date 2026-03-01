@@ -11,6 +11,47 @@ from core.database import SessionLocal, Device, Credential, ExecutionTask
 from services.audit_service import AuditService
 
 
+def _classify_error_retryable(error_msg: str, status_code: Optional[int] = None) -> bool:
+    """判断错误是否可重试
+    
+    可重试错误：网络超时、临时服务不可用、速率限制
+    不可重试错误：认证失败、参数错误、资源不存在
+    """
+    error_lower = error_msg.lower()
+    
+    # 不可重试的错误模式
+    non_retryable_patterns = [
+        "authentication", "auth", "unauthorized", "forbidden",
+        "invalid", "not found", "does not exist",
+        "bad request", "malformed", "syntax error",
+        "permission denied", "access denied",
+    ]
+    
+    for pattern in non_retryable_patterns:
+        if pattern in error_lower:
+            return False
+    
+    # HTTP 状态码判断
+    if status_code:
+        if status_code in [400, 401, 403, 404, 422]:  # 客户端错误
+            return False
+        if status_code in [429, 500, 502, 503, 504]:  # 速率限制或临时服务错误
+            return True
+    
+    # 可重试的错误模式
+    retryable_patterns = [
+        "timeout", "connection", "network", "unavailable",
+        "rate limit", "too many requests", "temporary",
+    ]
+    
+    for pattern in retryable_patterns:
+        if pattern in error_lower:
+            return True
+    
+    # 默认可重试（保守策略）
+    return True
+
+
 class MCPClient:
     """MCP 客户端 - 调用 MCP 工具执行交换机操作
 
@@ -105,10 +146,12 @@ class MCPClient:
                 "tool": tool_name,
             }
         else:
+            error_msg = f"Unknown tool: {tool_name}"
             return {
                 "success": False,
-                "error": f"Unknown tool: {tool_name}",
+                "error": error_msg,
                 "tool": tool_name,
+                "retryable": False,  # 未知工具不可重试
             }
 
     async def _call_http(
@@ -129,23 +172,29 @@ class MCPClient:
             return {"success": True, "result": result.get("result"), "tool": tool_name}
 
         except httpx.HTTPStatusError as e:
+            error_msg = f"HTTP error: {e.response.status_code}"
             return {
                 "success": False,
-                "error": f"HTTP error: {e.response.status_code}",
+                "error": error_msg,
                 "detail": e.response.text[:500],
                 "tool": tool_name,
+                "retryable": _classify_error_retryable(error_msg, e.response.status_code),
             }
         except httpx.ConnectError as e:
+            error_msg = f"Connection error: Cannot connect to MCP server at {self.server_url}"
             return {
                 "success": False,
-                "error": f"Connection error: Cannot connect to MCP server at {self.server_url}",
+                "error": error_msg,
                 "tool": tool_name,
+                "retryable": _classify_error_retryable(error_msg),
             }
         except Exception as e:
+            error_msg = f"Unexpected error: {str(e)}"
             return {
                 "success": False,
-                "error": f"Unexpected error: {str(e)}",
+                "error": error_msg,
                 "tool": tool_name,
+                "retryable": _classify_error_retryable(error_msg),
             }
 
     async def _call_stdio(
@@ -174,10 +223,12 @@ class MCPClient:
             )
 
             if process.returncode != 0:
+                error_msg = stderr.decode("utf-8", errors="ignore")[:500]
                 return {
                     "success": False,
-                    "error": stderr.decode("utf-8", errors="ignore")[:500],
+                    "error": error_msg,
                     "tool": tool_name,
+                    "retryable": _classify_error_retryable(error_msg),
                 }
 
             # 解析输出
@@ -193,19 +244,29 @@ class MCPClient:
                 }
 
         except asyncio.TimeoutError:
+            error_msg = f"Timeout after {self.timeout}s"
             return {
                 "success": False,
-                "error": f"Timeout after {self.timeout}s",
+                "error": error_msg,
                 "tool": tool_name,
+                "retryable": True,  # 超时总是可重试
             }
         except FileNotFoundError:
+            error_msg = "MCP tool not found. Please install mcp_tools package."
             return {
                 "success": False,
-                "error": "MCP tool not found. Please install mcp_tools package.",
+                "error": error_msg,
                 "tool": tool_name,
+                "retryable": False,  # 工具不存在不可重试
             }
         except Exception as e:
-            return {"success": False, "error": str(e)[:500], "tool": tool_name}
+            error_msg = str(e)[:500]
+            return {
+                "success": False,
+                "error": error_msg,
+                "tool": tool_name,
+                "retryable": _classify_error_retryable(error_msg),
+            }
 
     # ===== 业务方法 =====
 

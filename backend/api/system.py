@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import os
 
 from core.database import get_db, User
-from api.auth import get_current_user, get_user_role, get_user_permissions
+from api.auth import get_current_user, get_user_role, get_user_permissions, require_permissions
 from services.audit_service import AuditService
 from services.mode_service import get_current_mode, set_mode
 
@@ -143,7 +143,10 @@ async def health_check():
 
 
 @router.get("/mode", response_model=SystemModeResponse)
-async def get_system_mode(db: Session = Depends(get_db)):
+async def get_system_mode(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("view_system_mode"))
+):
     deploy_env = os.getenv("APP_ENV", "dev")
     mode = get_current_mode(db, deploy_env)
     return SystemModeResponse(**mode)
@@ -154,7 +157,7 @@ async def set_system_mode(
     request: SystemModeRequest,
     req: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions("set_system_mode")),
 ):
     if request.mode not in ["PASSIVE", "ACTIVE"]:
         raise HTTPException(status_code=400, detail="模式必须是 PASSIVE 或 ACTIVE")
@@ -211,9 +214,8 @@ async def rollback_system(
     payload: RollbackRequest,
     req: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permissions("system_rollback")),
 ):
-    _ensure_operator_or_admin(current_user, db)
 
     trace_id = payload.trace_id or getattr(req.state, "trace_id", None)
     deploy_env = os.getenv("APP_ENV", "dev")
