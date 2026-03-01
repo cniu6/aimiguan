@@ -157,22 +157,64 @@ class MCPClient:
     async def _call_http(
         self, tool_name: str, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """通过 HTTP API 调用 MCP 工具"""
+        """通过 HTTP/SSE 调用 MCP 工具（JSON-RPC 2.0 协议）"""
         try:
-            payload = {"tool": tool_name, "arguments": arguments}
+            # 1. Initialize session
+            init_payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "aimiguard", "version": "1.0.0"},
+                },
+            }
 
-            response = await self.http_client.post(
-                f"{self.server_url}/api/tools/call",
-                json=payload,
+            init_response = await self.http_client.post(
+                f"{self.server_url}/mcp/v1",
+                json=init_payload,
                 headers={"Content-Type": "application/json"},
             )
-            response.raise_for_status()
+            init_response.raise_for_status()
+            init_data = init_response.json()
 
-            result = response.json()
-            return {"success": True, "result": result.get("result"), "tool": tool_name}
+            if "error" in init_data:
+                raise Exception(f"Initialize failed: {init_data['error']}")
+
+            # 2. Call tool
+            call_payload = {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": tool_name, "arguments": arguments},
+            }
+
+            call_response = await self.http_client.post(
+                f"{self.server_url}/mcp/v1",
+                json=call_payload,
+                headers={"Content-Type": "application/json"},
+            )
+            call_response.raise_for_status()
+            call_data = call_response.json()
+
+            if "error" in call_data:
+                error_msg = call_data["error"].get("message", str(call_data["error"]))
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "tool": tool_name,
+                    "retryable": _classify_error_retryable(error_msg),
+                }
+
+            return {
+                "success": True,
+                "result": call_data.get("result", {}),
+                "tool": tool_name,
+            }
 
         except httpx.HTTPStatusError as e:
-            error_msg = f"HTTP error: {e.response.status_code}"
+            error_msg = f"HTTP {e.response.status_code}"
             return {
                 "success": False,
                 "error": error_msg,
@@ -180,16 +222,15 @@ class MCPClient:
                 "tool": tool_name,
                 "retryable": _classify_error_retryable(error_msg, e.response.status_code),
             }
-        except httpx.ConnectError as e:
-            error_msg = f"Connection error: Cannot connect to MCP server at {self.server_url}"
+        except httpx.ConnectError:
             return {
                 "success": False,
-                "error": error_msg,
+                "error": f"Cannot connect to MCP server at {self.server_url}",
                 "tool": tool_name,
-                "retryable": _classify_error_retryable(error_msg),
+                "retryable": True,
             }
         except Exception as e:
-            error_msg = f"Unexpected error: {str(e)}"
+            error_msg = str(e)[:500]
             return {
                 "success": False,
                 "error": error_msg,
@@ -200,30 +241,64 @@ class MCPClient:
     async def _call_stdio(
         self, tool_name: str, arguments: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """通过 stdio 调用本地 MCP 工具"""
+        """通过 stdio 调用本地 MCP 工具（JSON-RPC 2.0 协议）"""
         try:
-            # 构建命令
-            cmd = [
-                "python",
-                "-m",
-                "mcp_tools",  # 假设有 mcp_tools 模块
-                "--tool",
-                tool_name,
-                "--args",
-                json.dumps(arguments),
-            ]
+            # 获取 MCP 服务器命令
+            mcp_command = os.getenv("MCP_STDIO_COMMAND", "npx -y @modelcontextprotocol/server-everything")
+            cmd = mcp_command.split()
 
-            # 执行子进程
+            # 启动 MCP 服务器进程
             process = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(), timeout=self.timeout
-            )
+            # 1. 发送 initialize 请求
+            init_request = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "aimiguard", "version": "1.0.0"},
+                },
+            }
+            process.stdin.write((json.dumps(init_request) + "\n").encode())
+            await process.stdin.drain()
 
-            if process.returncode != 0:
-                error_msg = stderr.decode("utf-8", errors="ignore")[:500]
+            # 读取 initialize 响应
+            init_response = await asyncio.wait_for(
+                process.stdout.readline(), timeout=5.0
+            )
+            init_data = json.loads(init_response.decode())
+            if "error" in init_data:
+                raise Exception(f"Initialize failed: {init_data['error']}")
+
+            # 2. 发送 tools/call 请求
+            call_request = {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/call",
+                "params": {"name": tool_name, "arguments": arguments},
+            }
+            process.stdin.write((json.dumps(call_request) + "\n").encode())
+            await process.stdin.drain()
+
+            # 读取 tools/call 响应
+            call_response = await asyncio.wait_for(
+                process.stdout.readline(), timeout=self.timeout
+            )
+            call_data = json.loads(call_response.decode())
+
+            # 关闭进程
+            process.stdin.close()
+            await process.wait()
+
+            if "error" in call_data:
+                error_msg = call_data["error"].get("message", str(call_data["error"]))
                 return {
                     "success": False,
                     "error": error_msg,
@@ -231,35 +306,38 @@ class MCPClient:
                     "retryable": _classify_error_retryable(error_msg),
                 }
 
-            # 解析输出
-            output = stdout.decode("utf-8", errors="ignore")
-            try:
-                result = json.loads(output)
-                return {"success": True, "result": result, "tool": tool_name}
-            except json.JSONDecodeError:
-                return {
-                    "success": True,
-                    "result": {"raw_output": output},
-                    "tool": tool_name,
-                }
+            return {
+                "success": True,
+                "result": call_data.get("result", {}),
+                "tool": tool_name,
+            }
 
         except asyncio.TimeoutError:
-            error_msg = f"Timeout after {self.timeout}s"
+            if process:
+                process.kill()
             return {
                 "success": False,
-                "error": error_msg,
+                "error": f"Timeout after {self.timeout}s",
                 "tool": tool_name,
-                "retryable": True,  # 超时总是可重试
+                "retryable": True,
             }
         except FileNotFoundError:
-            error_msg = "MCP tool not found. Please install mcp_tools package."
             return {
                 "success": False,
-                "error": error_msg,
+                "error": f"MCP command not found: {mcp_command}",
                 "tool": tool_name,
-                "retryable": False,  # 工具不存在不可重试
+                "retryable": False,
+            }
+        except json.JSONDecodeError as e:
+            return {
+                "success": False,
+                "error": f"Invalid JSON response: {str(e)}",
+                "tool": tool_name,
+                "retryable": False,
             }
         except Exception as e:
+            if process:
+                process.kill()
             error_msg = str(e)[:500]
             return {
                 "success": False,
