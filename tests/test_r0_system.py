@@ -124,6 +124,7 @@ def setup_database():
     yield
 
     # 清理
+    app.dependency_overrides.clear()
     Base.metadata.drop_all(bind=engine)
 
 

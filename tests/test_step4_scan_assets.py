@@ -1,86 +1,10 @@
 """Step 4 资产管理最小验证：模型字段与创建校验"""
 
-import os
-import sys
-from datetime import datetime, timezone
-from importlib import import_module
-
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
-
-backend_main = import_module("main")
-backend_db = import_module("core.database")
-app = backend_main.app
-Base = backend_db.Base
-get_db = backend_db.get_db
-
-TEST_DATABASE_URL = "sqlite:///./test_step4_scan_assets.db"
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-client = TestClient(app)
-
-
-@pytest.fixture(scope="module", autouse=True)
-def setup_database():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    app.dependency_overrides[get_db] = override_get_db
-
-    db = TestingSessionLocal()
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-
-    db.execute(
-        text(
-            """
-            INSERT INTO user (username, password_hash, email, enabled, created_at, updated_at)
-            VALUES ('admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'admin@test.com', 1, :now, :now)
-            """
-        ),
-        {"now": now},
-    )
-    db.execute(
-        text(
-            """
-            INSERT INTO role (name, description, created_at, updated_at)
-            VALUES ('admin', '管理员', :now, :now)
-            """
-        ),
-        {"now": now},
-    )
-    db.execute(
-        text(
-            """
-            INSERT INTO user_role (user_id, role_id, granted_by, created_at, updated_at)
-            VALUES (1, 1, 'system', :now, :now)
-            """
-        ),
-        {"now": now},
-    )
-
-    db.commit()
-    db.close()
-
-    yield
-
-    app.dependency_overrides.clear()
-    Base.metadata.drop_all(bind=engine)
-
-
-def get_token() -> str:
+def get_token(client) -> str:
+    """获取测试用的 JWT token"""
     response = client.post(
         "/api/v1/auth/login", json={"username": "admin", "password": "admin123"}
     )
@@ -88,8 +12,8 @@ def get_token() -> str:
     return response.json()["access_token"]
 
 
-def test_create_asset_ip_with_default_tag_and_enabled():
-    token = get_token()
+def test_create_asset_ip_with_default_tag_and_enabled(client):
+    token = get_token(client)
     response = client.post(
         "/api/v1/scan/assets",
         json={"target": "192.168.1.10", "target_type": "ip"},
@@ -126,8 +50,8 @@ def test_create_asset_ip_with_default_tag_and_enabled():
         db.close()
 
 
-def test_create_asset_duplicate_rejected():
-    token = get_token()
+def test_create_asset_duplicate_rejected(client):
+    token = get_token(client)
     response = client.post(
         "/api/v1/scan/assets",
         json={"target": "192.168.1.10", "target_type": "IP"},
@@ -140,8 +64,8 @@ def test_create_asset_duplicate_rejected():
     assert "资产已存在" in body["message"]
 
 
-def test_create_asset_invalid_cidr_rejected():
-    token = get_token()
+def test_create_asset_invalid_cidr_rejected(client):
+    token = get_token(client)
     response = client.post(
         "/api/v1/scan/assets",
         json={"target": "10.0.0.1", "target_type": "CIDR"},
@@ -154,8 +78,8 @@ def test_create_asset_invalid_cidr_rejected():
     assert "CIDR" in body["message"]
 
 
-def test_update_asset_enabled_and_tags():
-    token = get_token()
+def test_update_asset_enabled_and_tags(client):
+    token = get_token(client)
 
     create_resp = client.post(
         "/api/v1/scan/assets",

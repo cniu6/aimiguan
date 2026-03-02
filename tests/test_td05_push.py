@@ -1,65 +1,5 @@
 """TD-05: 告警通道补全测试"""
-import sys
-import os
-
-# 设置测试数据库环境变量（必须在导入 app 之前）
-os.environ["DATABASE_URL"] = "sqlite:///./test_td05.db"
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
-
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from importlib import import_module
-
-backend_main = import_module("main")
-backend_db = import_module("core.database")
-app = backend_main.app
-Base = backend_db.Base
-get_db = backend_db.get_db
-
-TEST_DATABASE_URL = "sqlite:///./test_td05.db"
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-PushChannel = backend_db.PushChannel
-
-TEST_DATABASE_URL = "sqlite:///./test_td05.db"
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-@pytest.fixture(scope="module", autouse=True)
-def setup_database():
-    """创建测试数据库"""
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    app.dependency_overrides[get_db] = override_get_db
-    yield
-    app.dependency_overrides.clear()
-    
-    # 清理测试数据库文件
-    import os
-    db_path = "test_td05.db"
-    if os.path.exists(db_path):
-        try:
-            os.remove(db_path)
-        except PermissionError:
-            pass  # File in use, skip cleanup
-
-
-@pytest.fixture(scope="module")
-def client(setup_database):
-    """创建测试客户端"""
-    return TestClient(app)
 
 
 def test_create_webhook_channel(client):
@@ -109,6 +49,18 @@ def test_create_duplicate_channel(client):
 
 def test_list_channels(client):
     """测试获取通道列表"""
+    # 先创建一些通道
+    client.post("/api/v1/push/channels", json={
+        "channel_type": "webhook",
+        "channel_name": "list_test_1",
+        "target": "https://httpbin.org/post"
+    })
+    client.post("/api/v1/push/channels", json={
+        "channel_type": "wecom",
+        "channel_name": "list_test_2",
+        "target": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test"
+    })
+    
     response = client.get("/api/v1/push/channels")
     assert response.status_code == 200
     data = response.json()
