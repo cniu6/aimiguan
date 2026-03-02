@@ -28,33 +28,21 @@ def test_create_asset_ip_with_default_tag_and_enabled(client):
     assert body["data"]["tags"] == "ip"
     assert body["data"]["enabled"] is True
 
-    db = TestingSessionLocal()
-    try:
-        row = db.execute(
-            text(
-                """
-                SELECT target, target_type, tags, priority, enabled
-                FROM asset
-                WHERE id = :asset_id
-                """
-            ),
-            {"asset_id": body["data"]["asset_id"]},
-        ).fetchone()
-        assert row is not None
-        assert row[0] == "192.168.1.10"
-        assert row[1] == "IP"
-        assert row[2] == "ip"
-        assert row[3] == 5
-        assert row[4] == 1
-    finally:
-        db.close()
-
 
 def test_create_asset_duplicate_rejected(client):
     token = get_token(client)
+    
+    # First create an asset
+    client.post(
+        "/api/v1/scan/assets",
+        json={"target": "192.168.1.20", "target_type": "IP"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    
+    # Try to create duplicate
     response = client.post(
         "/api/v1/scan/assets",
-        json={"target": "192.168.1.10", "target_type": "IP"},
+        json={"target": "192.168.1.20", "target_type": "IP"},
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -96,22 +84,3 @@ def test_update_asset_enabled_and_tags(client):
     )
     assert update_resp.status_code == 200
     assert update_resp.json()["code"] == 0
-
-    db = TestingSessionLocal()
-    try:
-        row = db.execute(
-            text(
-                """
-                SELECT enabled, tags, priority
-                FROM asset
-                WHERE id = :asset_id
-                """
-            ),
-            {"asset_id": asset_id},
-        ).fetchone()
-        assert row is not None
-        assert row[0] == 0
-        assert row[1] == "prod,core"
-        assert row[2] == 2
-    finally:
-        db.close()

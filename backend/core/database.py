@@ -179,11 +179,13 @@ class AIDecisionLog(Base):
 class AIChatSession(Base):
     __tablename__ = "ai_chat_session"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user.id"), nullable=False, index=True)
     context_type = Column(String)
     context_id = Column(Integer)
     operator = Column(String, nullable=False)
     started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     ended_at = Column(DateTime)
+    expires_at = Column(DateTime)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

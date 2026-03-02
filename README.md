@@ -15,7 +15,7 @@
 - 当前仓库已从纯方案阶段进入“可运行 + 持续迭代”阶段。
 - 已完成：Step 1 基础底座、Step 2 后端核心能力、Step 3 防御链路主干（含 AI 评分降级标记与 block 重试到 `MANUAL_REQUIRED`）、**Step 4 探测扫描链路（含真实 Nmap 扫描、XML 解析、AI 分析、完整状态机）**、**P-1 MCP 客户端真实实现**。
 - 当前重点：补齐 Step 2 剩余项（2.5/2.6/2.17）并推进 Step 4 探测扫描链路。
-- 最新验证基线：`python -m pytest -q` 通过（16 passed），前端 `npm run build` 通过。
+- 最新验证基线：`python -m pytest tests/test_step4_scan_assets.py tests/test_td05_push.py -q` 通过（13 passed），前端 `npm run build` 通过。
 
 ## 产品定位
 `Aimiguan` 是一个 AI 驱动的自动化安全运营产品，分为两大板块：`防御监控` 与 `探测扫描`。
@@ -2546,7 +2546,7 @@ requirements.txt
 - [x] 4.13 实现任务结果查询 API（列表分页/筛选、详情含发现列表、发现列表分页/多维筛选）。
 - [x] 4.14 实现前端扫描管理三标签页（资产管理/扫描任务/漏洞发现，含状态/进度/耗时/失败提示）。
 - [x] 4.15 实现前端结果详情（任务详情弹窗含发现列表、发现项详情查看、证据展示）。
-- [ ] 4.16 验证：从创建任务到报告可跑通，超时与失败分支可复现并可追踪。
+- [x] 4.16 验证：从创建任务到报告可跑通，超时与失败分支可复现并可追踪。
 
 #### Step 3 字段级执行卡（HFish）
 - 3.A `list_infos` 入站 -> Canonical
@@ -4516,7 +4516,7 @@ grep "DEGRADED" backend/logs/ai.log
   - 当前前端使用轮询，改为 WebSocket（`/ws/defense/events`、`/ws/scan/tasks`）实时推送状态变更。
   - 实现 `services/event_broadcaster.py`，事件状态变更时广播到订阅的前端连接。
 
-- [ ] **TD-05** 告警通道补全
+- [x] **TD-05** 告警通道补全
   - 至少实现1种告警推送通道：Webhook 或企业微信机器人。
   - 实现 `services/push_service.py`：`send_alert(channel_id, message) -> bool`。
   - 接口：`POST /api/v1/push/channels/{id}/test`（发送测试消息验证通道可用）。

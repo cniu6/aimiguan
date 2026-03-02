@@ -91,6 +91,33 @@ def setup_test_database():
             )
         )
         
+        # 创建权限
+        permissions = [
+            ("ai_chat", "ai", "chat", "AI 对话"),
+            ("view_ai_sessions", "ai", "view", "查看 AI 会话"),
+        ]
+        for name, resource, action, desc in permissions:
+            db.execute(
+                text(
+                    """
+                    INSERT OR IGNORE INTO permission (name, resource, action, description, created_at)
+                    VALUES (:name, :resource, :action, :desc, :now)
+                    """
+                ),
+                {"name": name, "resource": resource, "action": action, "desc": desc, "now": now}
+            )
+        
+        # 将所有权限分配给 admin 角色
+        db.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO role_permission (role_id, permission_id, created_at)
+                SELECT 1, id, :now FROM permission
+                """
+            ),
+            {"now": now}
+        )
+        
         db.commit()
     finally:
         db.close()
@@ -108,17 +135,30 @@ def client(setup_test_database):
     return TestClient(app)
 
 
+@pytest.fixture(scope="function")
+def db():
+    """函数级别的数据库会话 fixture"""
+    session = TestingSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
 @pytest.fixture(scope="function", autouse=True)
 def reset_test_data():
     """每个测试函数运行前清理非核心数据"""
     db = TestingSessionLocal()
     try:
         # 清理测试数据（保留 admin 用户和角色）
+        db.execute(text("DELETE FROM ai_chat_message"))
+        db.execute(text("DELETE FROM ai_chat_session"))
         db.execute(text("DELETE FROM push_channel"))
         db.execute(text("DELETE FROM scan_task"))
         db.execute(text("DELETE FROM scan_finding"))
         db.execute(text("DELETE FROM asset WHERE id > 0"))  # 清理所有资产
         db.execute(text("DELETE FROM threat_event"))
+        db.execute(text("DELETE FROM user WHERE id > 1"))  # 清理测试用户（保留 admin）
         db.commit()
     finally:
         db.close()

@@ -61,13 +61,15 @@ def insert_sample_data(conn: sqlite3.Connection):
         ("view_reports", "report", "view", "查看报告"),
         ("manage_devices", "device", "manage", "管理设备"),
         ("manage_users", "user", "manage", "管理用户"),
-        ("manage_system", "system", "manage", "管理系统设置")
+        ("manage_system", "system", "manage", "管理系统设置"),
+        ("ai_chat", "ai", "chat", "AI 对话"),
+        ("view_ai_sessions", "ai", "view", "查看 AI 会话")
     ]
     cursor.executemany(
         "INSERT INTO permission (name, resource, action, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
         [(name, res, act, desc, now, now) for name, res, act, desc in permissions]
     )
-    print("✓ Created 10 permissions")
+    print("✓ Created 12 permissions")
     
     # 3. Assign permissions to roles
     # Admin gets all permissions
