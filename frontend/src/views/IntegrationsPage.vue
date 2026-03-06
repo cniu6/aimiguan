@@ -176,18 +176,142 @@
         </CardContent>
       </Card>
 
-      <!-- ── 其他联动状态 ── -->
-      <div class="grid gap-4 md:grid-cols-3">
-        <Card v-for="item in otherChannels" :key="item.name" class="opacity-70">
+      <!-- ── 推送通道管理 ── -->
+      <Card>
+        <CardHeader class="flex-row items-center justify-between pb-3">
+          <div class="space-y-0.5">
+            <CardTitle class="text-base flex items-center gap-2">
+              <BellRing class="size-4 text-purple-400" />
+              推送通道
+            </CardTitle>
+            <p class="text-xs text-muted-foreground">管理 Webhook / 企微 / 钉钉 / 邮件通知通道</p>
+          </div>
+          <Button variant="outline" size="sm" class="cursor-pointer gap-1.5" @click="showAddChannel = !showAddChannel">
+            <Plus class="size-3.5" />
+            新建通道
+          </Button>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <!-- 新建表单 -->
+          <div v-if="showAddChannel" class="rounded-lg border border-border p-4 space-y-3 bg-muted/20">
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="space-y-1.5">
+                <label class="text-sm font-medium">通道类型</label>
+                <select
+                  v-model="channelForm.channel_type"
+                  class="h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="webhook">Webhook</option>
+                  <option value="wecom">企业微信</option>
+                  <option value="dingtalk">钉钉</option>
+                  <option value="email">邮件</option>
+                </select>
+              </div>
+              <div class="space-y-1.5">
+                <label class="text-sm font-medium">通道名称</label>
+                <input
+                  v-model="channelForm.channel_name"
+                  placeholder="例如：运维告警群"
+                  class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+              <div class="space-y-1.5 sm:col-span-2">
+                <label class="text-sm font-medium">目标地址（Webhook URL / 邮箱）</label>
+                <input
+                  v-model="channelForm.target"
+                  placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+                  class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring font-mono"
+                />
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <Button size="sm" class="cursor-pointer" :disabled="channelCreating" @click="createChannel">
+                {{ channelCreating ? '创建中…' : '创建' }}
+              </Button>
+              <Button variant="ghost" size="sm" class="cursor-pointer" @click="showAddChannel = false">取消</Button>
+              <span v-if="channelMsg" class="text-xs" :class="channelMsgOk ? 'text-emerald-400' : 'text-destructive'">{{ channelMsg }}</span>
+            </div>
+          </div>
+
+          <!-- 通道列表 -->
+          <div v-if="channelsLoading" class="space-y-2">
+            <Skeleton v-for="i in 2" :key="i" class="h-14 w-full rounded" />
+          </div>
+          <div v-else-if="channels.length === 0" class="py-6 text-center text-sm text-muted-foreground">
+            暂无推送通道
+          </div>
+          <div v-else class="space-y-2">
+            <div
+              v-for="ch in channels"
+              :key="ch.id"
+              class="flex items-center justify-between rounded-lg border border-border p-3"
+            >
+              <div class="space-y-0.5 min-w-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-medium text-sm">{{ ch.channel_name }}</span>
+                  <Badge variant="outline" class="text-[10px] h-4 capitalize">{{ ch.channel_type }}</Badge>
+                  <Badge
+                    :class="ch.enabled ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-muted text-muted-foreground'"
+                    class="text-[10px] h-4"
+                  >{{ ch.enabled ? '启用' : '禁用' }}</Badge>
+                </div>
+                <p class="text-xs text-muted-foreground truncate max-w-[360px] font-mono">{{ ch.target }}</p>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="cursor-pointer text-xs h-7 gap-1"
+                  @click="toggleChannel(ch)"
+                >
+                  {{ ch.enabled ? '禁用' : '启用' }}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="cursor-pointer text-xs h-7 gap-1"
+                  @click="testChannel(ch.id)"
+                >
+                  测试
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="cursor-pointer text-destructive text-xs h-7"
+                  @click="deleteChannel(ch.id)"
+                >
+                  删除
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <!-- ── 其他联动（占位） ── -->
+      <div class="grid gap-4 md:grid-cols-2">
+        <Card class="opacity-70">
           <CardHeader class="pb-2">
             <CardTitle class="text-sm flex items-center gap-2">
-              <component :is="item.icon" class="size-4 text-muted-foreground" />
-              {{ item.name }}
+              <Shield class="size-4 text-muted-foreground" />
+              MCP 执行器
             </CardTitle>
           </CardHeader>
-          <CardContent class="space-y-2 text-xs text-muted-foreground">
-            <p>{{ item.desc }}</p>
-            <Badge class="bg-muted text-muted-foreground text-xs">待配置</Badge>
+          <CardContent class="text-xs text-muted-foreground space-y-1">
+            <p>交换机封禁与回滚工具调用链路（stdio/sse 通信）</p>
+            <Badge class="bg-muted text-muted-foreground text-xs">已集成</Badge>
+          </CardContent>
+        </Card>
+        <Card class="opacity-70">
+          <CardHeader class="pb-2">
+            <CardTitle class="text-sm flex items-center gap-2">
+              <Zap class="size-4 text-muted-foreground" />
+              防火墙同步
+            </CardTitle>
+          </CardHeader>
+          <CardContent class="text-xs text-muted-foreground space-y-1">
+            <p>高风险 IP 外部防火墙封堵联动</p>
+            <Badge class="bg-muted text-muted-foreground text-xs">已集成</Badge>
           </CardContent>
         </Card>
       </div>
@@ -196,13 +320,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { Bug, RefreshCw, Shield, Bell, Zap } from 'lucide-vue-next'
+import { onMounted, reactive, ref } from 'vue'
+import { BellRing, Bug, Plus, RefreshCw, Shield, Zap } from 'lucide-vue-next'
+import { apiClient } from '@/api/client'
 import { defenseApi, type HFishConfig } from '@/api/defense'
 import { scanApi } from '@/api/scan'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 
 // ── HFish 状态 ──
 const hfishConfig = ref<HFishConfig>({ host_port: null, sync_interval: 60, enabled: false })
@@ -313,17 +439,97 @@ const saveNmapConfig = async () => {
   }
 }
 
-// Radar 图标用 Lucide 没有，用 Zap 代替
 const Radar = Zap
 
-const otherChannels = [
-  { name: 'MCP 执行器', desc: '交换机封禁与回滚工具调用链路（stdio/sse 通信）', icon: Shield },
-  { name: '异常推送', desc: '钉钉 / 企微 / 邮件通知通道配置', icon: Bell },
-  { name: '防火墙同步', desc: '高风险 IP 外部防火墙封堵联动', icon: Zap },
-]
+// ── 推送通道 ──
+interface PushChannel {
+  id: number
+  channel_type: string
+  channel_name: string
+  target: string
+  enabled: number
+}
+
+const channels = ref<PushChannel[]>([])
+const channelsLoading = ref(false)
+const showAddChannel = ref(false)
+const channelCreating = ref(false)
+const channelMsg = ref('')
+const channelMsgOk = ref(true)
+const channelForm = reactive({
+  channel_type: 'webhook',
+  channel_name: '',
+  target: '',
+})
+
+const loadChannels = async () => {
+  channelsLoading.value = true
+  try {
+    const res: any = await apiClient.get('/push/channels')
+    const data = res?.data ?? res
+    channels.value = Array.isArray(data) ? data : (data?.items ?? [])
+  } catch {
+    channels.value = []
+  } finally {
+    channelsLoading.value = false
+  }
+}
+
+const createChannel = async () => {
+  if (!channelForm.channel_name.trim() || !channelForm.target.trim()) {
+    channelMsg.value = '请填写完整'
+    channelMsgOk.value = false
+    setTimeout(() => { channelMsg.value = '' }, 3000)
+    return
+  }
+  channelCreating.value = true
+  channelMsg.value = ''
+  try {
+    await apiClient.post('/push/channels', { ...channelForm })
+    channelMsgOk.value = true
+    channelMsg.value = '创建成功'
+    showAddChannel.value = false
+    channelForm.channel_name = ''
+    channelForm.target = ''
+    await loadChannels()
+  } catch (e: any) {
+    channelMsgOk.value = false
+    channelMsg.value = e?.displayMessage || '创建失败'
+  } finally {
+    channelCreating.value = false
+    setTimeout(() => { channelMsg.value = '' }, 3000)
+  }
+}
+
+const toggleChannel = async (ch: PushChannel) => {
+  try {
+    await apiClient.put(`/push/channels/${ch.id}`, { enabled: ch.enabled ? 0 : 1 })
+    await loadChannels()
+  } catch { /* ignore */ }
+}
+
+const testChannel = async (id: number) => {
+  try {
+    await apiClient.post(`/push/channels/${id}/test`)
+    channelMsg.value = '测试推送已完成'
+    channelMsgOk.value = true
+  } catch {
+    channelMsg.value = '测试失败'
+    channelMsgOk.value = false
+  }
+  setTimeout(() => { channelMsg.value = '' }, 3000)
+}
+
+const deleteChannel = async (id: number) => {
+  try {
+    await apiClient.delete(`/push/channels/${id}`)
+    await loadChannels()
+  } catch { /* ignore */ }
+}
 
 onMounted(() => {
   loadHFishConfig()
   loadNmapConfig()
+  loadChannels()
 })
 </script>

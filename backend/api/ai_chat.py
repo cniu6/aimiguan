@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 
-from core.database import get_db, AIChatSession, AIChatMessage, User
+from core.database import (
+    get_db, AIChatSession, AIChatMessage, ThreatEvent, ScanTask, ScanFinding, User,
+)
 from api.auth import require_permissions
 
 router = APIRouter(prefix="/api/v1/ai", tags=["ai"])
@@ -31,6 +34,66 @@ def verify_session_ownership(session: AIChatSession, user: User) -> None:
         expires_at_utc = session.expires_at.replace(tzinfo=timezone.utc) if session.expires_at.tzinfo is None else session.expires_at
         if expires_at_utc < datetime.now(timezone.utc):
             raise HTTPException(status_code=410, detail="会话已过期")
+
+def _build_context_summary(db: Session, req: ChatRequest, session: "AIChatSession") -> str:
+    """根据 context_type 从数据库构建上下文摘要"""
+    parts: list[str] = []
+    ctx_type = req.context_type or session.context_type
+    ctx_id = req.context_id or (str(session.context_id) if session.context_id else None)
+
+    if ctx_type == "event" and ctx_id:
+        ev = db.query(ThreatEvent).filter(ThreatEvent.id == int(ctx_id)).first()
+        if ev:
+            parts.append(
+                f"[关联事件#{ev.id}] IP={ev.ip} 来源={ev.source} 标签={ev.threat_label} "
+                f"AI评分={ev.ai_score} 状态={ev.status}"
+            )
+    elif ctx_type == "scan_task" and ctx_id:
+        task = db.query(ScanTask).filter(ScanTask.id == int(ctx_id)).first()
+        if task:
+            parts.append(
+                f"[关联扫描#{task.id}] 目标={task.target} 工具={task.tool_name} "
+                f"状态={task.state} Profile={task.profile}"
+            )
+            findings_count = db.query(func.count(ScanFinding.id)).filter(
+                ScanFinding.scan_task_id == task.id
+            ).scalar() or 0
+            high_count = db.query(func.count(ScanFinding.id)).filter(
+                ScanFinding.scan_task_id == task.id, ScanFinding.severity == "HIGH"
+            ).scalar() or 0
+            parts.append(f"发现{findings_count}个漏洞（{high_count}个高危）")
+
+    # 统计概览
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_alerts = db.query(func.count(ThreatEvent.id)).filter(
+        ThreatEvent.created_at >= today
+    ).scalar() or 0
+    pending_events = db.query(func.count(ThreatEvent.id)).filter(
+        ThreatEvent.status == "PENDING"
+    ).scalar() or 0
+    parts.append(f"系统概况: 今日告警{today_alerts}条, 待处理{pending_events}条")
+
+    return " | ".join(parts)
+
+
+def _generate_ai_reply(user_message: str, context: str) -> str:
+    """
+    基于用户消息和上下文生成 AI 回复。
+    当前为模板回复，后续替换为真实 AI 模型调用。
+    """
+    msg_lower = user_message.lower()
+
+    if any(kw in msg_lower for kw in ["分析", "解读", "判断"]):
+        return f"基于当前数据分析：{context}。建议优先处理高危事件，并关注重复攻击 IP 的行为模式。"
+    elif any(kw in msg_lower for kw in ["封禁", "阻断", "block"]):
+        return f"当前系统状态：{context}。封禁建议：对 AI 评分 ≥ 80 的 IP 建议立即封禁，60-79 分建议观察后处理。"
+    elif any(kw in msg_lower for kw in ["漏洞", "扫描", "scan"]):
+        return f"扫描情况：{context}。建议优先修复高危漏洞，并对开放敏感端口（22/3389/445）的主机加强防护。"
+    elif any(kw in msg_lower for kw in ["报告", "汇总", "总结"]):
+        return f"系统摘要：{context}。如需详细报告，可在右侧面板生成日报或周报。"
+    else:
+        return f"收到您的消息。{context}。请问需要我进一步分析哪方面的安全态势？"
+
 
 @router.post("/chat")
 async def chat(
@@ -68,8 +131,9 @@ async def chat(
     )
     db.add(user_msg)
     
-    # AI 响应（占位实现）
-    response_content = f"AI response to: {req.message}"
+    # 构建上下文摘要
+    context_summary = _build_context_summary(db, req, session)
+    response_content = _generate_ai_reply(req.message, context_summary)
     
     ai_msg = AIChatMessage(
         session_id=session.id,

@@ -116,73 +116,103 @@
       </div>
     </div>
 
-    <!-- 右侧：报告 -->
+    <!-- 右侧：报告 + TTS -->
     <aside class="w-64 shrink-0 border-l border-border flex flex-col">
-      <div class="px-4 py-3 border-b border-border">
-        <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">AI 报告</p>
+      <!-- 标签切换 -->
+      <div class="flex border-b border-border">
+        <button
+          v-for="tab in rightTabs"
+          :key="tab.key"
+          :class="[
+            'flex-1 py-2.5 text-xs font-medium text-center border-b-2 transition-colors',
+            rightTab === tab.key
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          ]"
+          @click="rightTab = tab.key"
+        >{{ tab.label }}</button>
       </div>
 
-      <!-- 生成按钮 -->
-      <div class="px-3 py-2.5 border-b border-border space-y-2">
-        <div class="grid grid-cols-2 gap-1.5">
-          <Button
-            variant="outline"
-            size="sm"
-            class="cursor-pointer text-xs gap-1"
-            :disabled="reportGenerating"
-            @click="generateReport('daily')"
-          >
-            <FileText class="size-3" />
-            日报
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            class="cursor-pointer text-xs gap-1"
-            :disabled="reportGenerating"
-            @click="generateReport('weekly')"
-          >
-            <FileText class="size-3" />
-            周报
-          </Button>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          class="cursor-pointer text-xs gap-1 w-full"
-          :disabled="reportGenerating"
-          @click="generateReport('scan')"
-        >
-          <FileText class="size-3" />
-          扫描报告
-        </Button>
-        <p v-if="reportGenerating" class="text-[10px] text-muted-foreground text-center animate-pulse">生成中…</p>
-        <p v-if="reportMsg" class="text-[10px] text-center" :class="reportMsgOk ? 'text-emerald-400' : 'text-destructive'">{{ reportMsg }}</p>
-      </div>
-
-      <!-- 报告列表 -->
-      <div class="flex-1 overflow-y-auto p-2 space-y-1.5">
-        <div v-if="reportsLoading" class="space-y-1.5">
-          <Skeleton v-for="i in 3" :key="i" class="h-16 w-full rounded" />
-        </div>
-        <div v-else-if="reports.length === 0" class="py-8 text-center text-xs text-muted-foreground">
-          暂无报告
-        </div>
-        <div
-          v-for="r in reports"
-          :key="r.id"
-          class="rounded-lg border border-border p-2.5 space-y-1 cursor-pointer hover:bg-muted/40 transition-colors"
-          @click="selectedReport = selectedReport?.id === r.id ? null : r"
-        >
-          <div class="flex items-center justify-between">
-            <Badge variant="outline" class="text-[10px] h-4 capitalize">{{ r.report_type }}</Badge>
-            <span class="text-[10px] text-muted-foreground">{{ formatDate(r.created_at) }}</span>
+      <!-- 报告面板 -->
+      <div v-show="rightTab === 'report'" class="flex flex-col flex-1 min-h-0">
+        <div class="px-3 py-2.5 border-b border-border space-y-2">
+          <div class="grid grid-cols-2 gap-1.5">
+            <Button variant="outline" size="sm" class="cursor-pointer text-xs gap-1" :disabled="reportGenerating" @click="generateReport('daily')">
+              <FileText class="size-3" /> 日报
+            </Button>
+            <Button variant="outline" size="sm" class="cursor-pointer text-xs gap-1" :disabled="reportGenerating" @click="generateReport('weekly')">
+              <FileText class="size-3" /> 周报
+            </Button>
           </div>
-          <p class="text-xs text-muted-foreground line-clamp-2">{{ r.summary }}</p>
-          <!-- 展开详情 -->
-          <div v-if="selectedReport?.id === r.id" class="text-[10px] text-muted-foreground pt-1 border-t border-border mt-1 space-y-0.5">
-            <p>trace: <code>{{ r.trace_id?.slice(0, 16) }}</code></p>
-            <p>path: {{ r.detail_path }}</p>
+          <Button variant="outline" size="sm" class="cursor-pointer text-xs gap-1 w-full" :disabled="reportGenerating" @click="generateReport('scan')">
+            <FileText class="size-3" /> 扫描报告
+          </Button>
+          <p v-if="reportGenerating" class="text-[10px] text-muted-foreground text-center animate-pulse">生成中…</p>
+          <p v-if="reportMsg" class="text-[10px] text-center" :class="reportMsgOk ? 'text-emerald-400' : 'text-destructive'">{{ reportMsg }}</p>
+        </div>
+        <div class="flex-1 overflow-y-auto p-2 space-y-1.5">
+          <div v-if="reportsLoading" class="space-y-1.5">
+            <Skeleton v-for="i in 3" :key="i" class="h-16 w-full rounded" />
+          </div>
+          <div v-else-if="reports.length === 0" class="py-8 text-center text-xs text-muted-foreground">暂无报告</div>
+          <div
+            v-for="r in reports"
+            :key="r.id"
+            class="rounded-lg border border-border p-2.5 space-y-1 cursor-pointer hover:bg-muted/40 transition-colors"
+            @click="selectedReport = selectedReport?.id === r.id ? null : r"
+          >
+            <div class="flex items-center justify-between">
+              <Badge variant="outline" class="text-[10px] h-4 capitalize">{{ r.report_type }}</Badge>
+              <span class="text-[10px] text-muted-foreground">{{ formatDate(r.created_at) }}</span>
+            </div>
+            <p class="text-xs text-muted-foreground line-clamp-2">{{ r.summary }}</p>
+            <div v-if="selectedReport?.id === r.id" class="text-[10px] text-muted-foreground pt-1 border-t border-border mt-1 space-y-0.5">
+              <p>trace: <code>{{ r.trace_id?.slice(0, 16) }}</code></p>
+              <p>path: {{ r.detail_path }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TTS 面板 -->
+      <div v-show="rightTab === 'tts'" class="flex flex-col flex-1 min-h-0">
+        <div class="px-3 py-2.5 border-b border-border space-y-2">
+          <textarea
+            v-model="ttsText"
+            rows="3"
+            placeholder="输入文本，将其转为语音…"
+            class="w-full rounded-md border border-input bg-background px-2.5 py-2 text-xs placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <Button size="sm" class="cursor-pointer text-xs gap-1 w-full" :disabled="!ttsText.trim() || ttsCreating" @click="createTTS">
+            <Volume2 class="size-3" />
+            {{ ttsCreating ? '创建中…' : '创建 TTS 任务' }}
+          </Button>
+          <p v-if="ttsMsg" class="text-[10px] text-center" :class="ttsMsgOk ? 'text-emerald-400' : 'text-destructive'">{{ ttsMsg }}</p>
+        </div>
+        <div class="flex-1 overflow-y-auto p-2 space-y-1.5">
+          <div v-if="ttsLoading" class="space-y-1.5">
+            <Skeleton v-for="i in 3" :key="i" class="h-12 w-full rounded" />
+          </div>
+          <div v-else-if="ttsTasks.length === 0" class="py-8 text-center text-xs text-muted-foreground">暂无 TTS 任务</div>
+          <div
+            v-for="t in ttsTasks"
+            :key="t.id"
+            class="rounded-lg border border-border p-2.5 space-y-1"
+          >
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] text-muted-foreground">#{{ t.id }}</span>
+              <Badge
+                :class="ttsStateColor(t.state)"
+                class="text-[10px] h-4"
+              >{{ t.state }}</Badge>
+            </div>
+            <p class="text-xs text-muted-foreground line-clamp-2">{{ t.text_preview }}</p>
+            <div v-if="t.state === 'PENDING'" class="pt-1">
+              <Button variant="outline" size="sm" class="cursor-pointer text-[10px] h-5 w-full gap-1" @click="processTTS(t.id)">
+                <Play class="size-2.5" /> 模拟处理
+              </Button>
+            </div>
+            <div v-if="t.audio_path" class="text-[10px] text-emerald-400 truncate">{{ t.audio_path }}</div>
           </div>
         </div>
       </div>
@@ -194,11 +224,12 @@
 import { nextTick, onMounted, ref } from 'vue'
 import { aiApi } from '@/api/ai'
 import { reportApi } from '@/api/report'
+import { ttsApi, type TTSTask } from '@/api/tts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { BrainCircuit, FileText, Plus, Send, User } from 'lucide-vue-next'
+import { BrainCircuit, FileText, Play, Plus, Send, User, Volume2 } from 'lucide-vue-next'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -222,6 +253,13 @@ interface Report {
   created_at: string
 }
 
+// ── 右侧标签 ──
+const rightTabs = [
+  { key: 'report', label: '报告' },
+  { key: 'tts', label: 'TTS' },
+]
+const rightTab = ref('report')
+
 // ── 状态 ──
 const messages = ref<Message[]>([])
 const inputMessage = ref('')
@@ -238,6 +276,14 @@ const reportGenerating = ref(false)
 const reportMsg = ref('')
 const reportMsgOk = ref(true)
 const selectedReport = ref<Report | null>(null)
+
+// TTS
+const ttsText = ref('')
+const ttsCreating = ref(false)
+const ttsMsg = ref('')
+const ttsMsgOk = ref(true)
+const ttsTasks = ref<TTSTask[]>([])
+const ttsLoading = ref(false)
 
 // ── 会话管理 ──
 const newSession = () => {
@@ -275,7 +321,7 @@ const loadSession = async (s: Session) => {
   }
 }
 
-// ── 发送消息 ──
+// ── 发送消息（带 session_id） ──
 const sendMessage = async () => {
   const text = inputMessage.value.trim()
   if (!text || aiThinking.value) return
@@ -287,11 +333,7 @@ const sendMessage = async () => {
   await scrollToBottom()
 
   try {
-    const res: any = await aiApi.chat(text, currentSessionId.value
-      ? undefined
-      : undefined
-    )
-    // res = { session_id, message, context } (interceptor已解包)
+    const res: any = await aiApi.chat(text, currentSessionId.value ?? undefined)
     const data = res?.data ?? res
     const sessionId = data?.session_id ?? res?.session_id
     const reply = data?.message ?? res?.message ?? '（无响应）'
@@ -315,7 +357,8 @@ const loadReports = async () => {
   reportsLoading.value = true
   try {
     const data: any = await reportApi.getReports()
-    reports.value = Array.isArray(data) ? data : (data?.data ?? [])
+    const list = data?.items ?? (Array.isArray(data) ? data : (data?.data ?? []))
+    reports.value = Array.isArray(list) ? list : []
   } catch {
     reports.value = []
   } finally {
@@ -340,6 +383,56 @@ const generateReport = async (type: string) => {
   }
 }
 
+// ── TTS ──
+const loadTTS = async () => {
+  ttsLoading.value = true
+  try {
+    const data = await ttsApi.listTasks({ page: 1, page_size: 20 })
+    ttsTasks.value = data?.items ?? []
+  } catch {
+    ttsTasks.value = []
+  } finally {
+    ttsLoading.value = false
+  }
+}
+
+const createTTS = async () => {
+  const text = ttsText.value.trim()
+  if (!text) return
+  ttsCreating.value = true
+  ttsMsg.value = ''
+  try {
+    await ttsApi.createTask(text)
+    ttsText.value = ''
+    ttsMsgOk.value = true
+    ttsMsg.value = 'TTS 任务已创建'
+    await loadTTS()
+  } catch {
+    ttsMsgOk.value = false
+    ttsMsg.value = '创建失败'
+  } finally {
+    ttsCreating.value = false
+    setTimeout(() => { ttsMsg.value = '' }, 3000)
+  }
+}
+
+const processTTS = async (taskId: number) => {
+  try {
+    await ttsApi.processTask(taskId)
+    await loadTTS()
+  } catch { /* ignore */ }
+}
+
+const ttsStateColor = (s: string) => {
+  const m: Record<string, string> = {
+    PENDING: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+    PROCESSING: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+    SUCCESS: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+    FAILED: 'bg-destructive/15 text-destructive border-destructive/30',
+  }
+  return m[s] || 'bg-muted text-muted-foreground'
+}
+
 // ── 工具函数 ──
 const scrollToBottom = async () => {
   await nextTick()
@@ -354,12 +447,9 @@ const formatTime = (t: string) =>
 const formatDate = (t: string) =>
   t ? new Date(t).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : ''
 
-// ── aiApi 扩展：传 session_id ──
-// 重写 sendMessage 支持 session_id
-const _send = sendMessage
-
 onMounted(() => {
   loadSessions()
   loadReports()
+  loadTTS()
 })
 </script>
