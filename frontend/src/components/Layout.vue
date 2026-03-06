@@ -700,15 +700,8 @@ const resetAnimatedState = () => {
 }
 
 const runModeTransition = (targetMode: ModeKey) => {
-  // Check if current page is mode-neutral (settings, profile, etc.)
-  const isNeutralPage = !route.path.startsWith('/defense') && !route.path.startsWith('/probe')
-  
-  if (isNeutralPage) {
-    // For neutral pages, just update the last active mode without navigation
-    lastActiveMode.value = targetMode
-    return
-  }
-
+  // 无论当前在哪个页面（包括 settings/integrations/audit 等中性页面），
+  // 切换时都必须触发完整动画，动画结束后跳转到目标模式的默认页。
   const sidebarEl = sidebarRef.value
   const contentEl = contentRef.value
   const shellEl = shellRef.value

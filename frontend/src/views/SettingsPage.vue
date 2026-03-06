@@ -7,68 +7,55 @@
         <p class="text-sm text-muted-foreground">系统级配置与管理入口</p>
       </div>
 
-      <!-- 系统模式 -->
+      <!-- 系统运行架构说明 -->
       <Card>
         <CardHeader class="pb-3 flex-row items-center justify-between">
           <div class="space-y-0.5">
             <CardTitle class="text-base flex items-center gap-2">
               <Shield class="size-4 text-primary" />
-              系统运行模式
+              系统运行架构
             </CardTitle>
-            <p class="text-xs text-muted-foreground">控制防御策略的主动/被动策略切换</p>
+            <p class="text-xs text-muted-foreground">防御坚守与主动探测的运行机制说明</p>
           </div>
-          <Badge
-            :class="currentMode === 'ACTIVE'
-              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-              : 'bg-amber-500/15 text-amber-400 border-amber-500/30'"
-          >
-            {{ currentMode === 'ACTIVE' ? '主动防御' : '被动监控' }}
+          <Badge class="bg-blue-500/15 text-blue-400 border-blue-500/30">
+            防御坚守持续运行中
           </Badge>
         </CardHeader>
-        <CardContent class="space-y-4">
-          <div v-if="modeLoading" class="space-y-2">
-            <Skeleton class="h-8 w-full rounded" />
-          </div>
-          <div v-else class="grid gap-3 sm:grid-cols-2">
-            <!-- PASSIVE -->
-            <button
-              :class="[
-                'rounded-lg border-2 p-4 text-left transition-all',
-                currentMode === 'PASSIVE'
-                  ? 'border-primary bg-primary/5'
-                  : 'border-border hover:border-muted-foreground/40',
-              ]"
-              @click="setMode('PASSIVE')"
-            >
+        <CardContent class="space-y-3">
+          <div class="grid gap-3 sm:grid-cols-2">
+            <!-- 防御坚守 -->
+            <div class="rounded-lg border-2 border-blue-500/40 bg-blue-500/5 p-4">
               <div class="flex items-center gap-2 mb-1.5">
-                <Eye class="size-4 text-amber-400" />
-                <span class="font-semibold text-sm">被动监控（PASSIVE）</span>
+                <Shield class="size-4 text-blue-400" />
+                <span class="font-semibold text-sm text-blue-400">防御坚守（始终运行）</span>
               </div>
-              <p class="text-xs text-muted-foreground">仅记录和告警，不自动执行封禁动作。适合初期部署或误报率高时使用。</p>
-            </button>
-            <!-- ACTIVE -->
-            <button
-              :class="[
-                'rounded-lg border-2 p-4 text-left transition-all',
-                currentMode === 'ACTIVE'
-                  ? 'border-emerald-500 bg-emerald-500/5'
-                  : 'border-border hover:border-muted-foreground/40',
-              ]"
-              @click="confirmSetMode('ACTIVE')"
-            >
+              <p class="text-xs text-muted-foreground leading-relaxed">
+                后台持续采集 HFish 蜜罐告警、AI 评分、审批执行封禁，全程自动运行，无需手动开启。
+                这是系统的<span class="text-foreground font-medium">默认且唯一持续状态</span>。
+              </p>
+            </div>
+            <!-- 主动探测 -->
+            <div class="rounded-lg border-2 border-orange-500/40 bg-orange-500/5 p-4">
               <div class="flex items-center gap-2 mb-1.5">
-                <ShieldCheck class="size-4 text-emerald-400" />
-                <span class="font-semibold text-sm">主动防御（ACTIVE）</span>
+                <ScanSearch class="size-4 text-orange-400" />
+                <span class="font-semibold text-sm text-orange-400">主动探测（手动触发）</span>
               </div>
-              <p class="text-xs text-muted-foreground">AI 评分达到阈值时自动触发封禁，高危 IP 立即阻断。需确认操作。</p>
-            </button>
+              <p class="text-xs text-muted-foreground leading-relaxed">
+                主动探测任务需在顶栏切换到<span class="text-foreground font-medium">「主动探测」面板</span>后，
+                手动添加扫描任务来触发。不存在系统级"主动模式"开关，避免资源持续消耗。
+              </p>
+            </div>
           </div>
-          <div v-if="modeInfo" class="text-xs text-muted-foreground space-y-0.5 pt-1 border-t border-border">
-            <p>最后操作：<span class="text-foreground">{{ modeInfo.operator }}</span></p>
-            <p>时间：{{ formatTime(modeInfo.updated_at) }}</p>
-            <p v-if="modeInfo.reason">原因：{{ modeInfo.reason }}</p>
+          <div class="rounded-md bg-muted/30 border border-border px-3 py-2.5 text-xs text-muted-foreground space-y-1">
+            <p class="flex items-center gap-1.5">
+              <span class="inline-block size-1.5 rounded-full bg-blue-400 shrink-0"></span>
+              顶栏「防御坚守 / 主动探测」切换的是<strong class="text-foreground">展示面板</strong>，不影响后端任何运行状态。
+            </p>
+            <p class="flex items-center gap-1.5">
+              <span class="inline-block size-1.5 rounded-full bg-orange-400 shrink-0"></span>
+              如需执行主动探测，请切换到主动探测面板 → 扫描管理 → 新建扫描任务。
+            </p>
           </div>
-          <p v-if="modeMsg" class="text-xs" :class="modeMsgOk ? 'text-emerald-400' : 'text-destructive'">{{ modeMsg }}</p>
         </CardContent>
       </Card>
 
@@ -183,34 +170,6 @@
         </CardContent>
       </Card>
 
-      <!-- 确认切换 ACTIVE 弹窗 -->
-      <div
-        v-if="confirmOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-        @click.self="confirmOpen = false"
-      >
-        <div class="mx-4 w-full max-w-sm rounded-xl border border-border bg-background p-6 shadow-2xl space-y-4">
-          <div class="flex items-center gap-2 text-amber-400">
-            <AlertTriangle class="size-5" />
-            <span class="font-semibold">切换到主动防御模式</span>
-          </div>
-          <p class="text-sm text-muted-foreground">主动防御模式下，AI 评分 ≥ 80 分的事件将自动触发封禁，请确认操作。</p>
-          <div class="space-y-1.5">
-            <label class="text-xs font-medium">操作原因（必填）</label>
-            <input
-              v-model="modeReason"
-              placeholder="请说明切换原因…"
-              class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
-          <div class="flex gap-2 justify-end">
-            <Button variant="outline" size="sm" class="cursor-pointer" @click="confirmOpen = false">取消</Button>
-            <Button size="sm" class="cursor-pointer" :disabled="!modeReason.trim() || modeSaving" @click="setMode('ACTIVE')">
-              {{ modeSaving ? '切换中…' : '确认切换' }}
-            </Button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -222,17 +181,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AlertTriangle, Eye, Info, Shield, ShieldCheck, UserCircle } from 'lucide-vue-next'
-
-// ── 模式 ──
-const currentMode = ref('PASSIVE')
-const modeInfo = ref<{ operator: string; updated_at: string; reason: string | null } | null>(null)
-const modeLoading = ref(false)
-const modeSaving = ref(false)
-const modeMsg = ref('')
-const modeMsgOk = ref(true)
-const confirmOpen = ref(false)
-const modeReason = ref('')
+import { Info, ScanSearch, Shield, UserCircle } from 'lucide-vue-next'
 
 // ── 版本 ──
 const versionLoading = ref(false)
@@ -243,57 +192,6 @@ const profileLoading = ref(false)
 const profile = ref<{ username: string; role: string; email: string | null; permissions: string[] }>({
   username: '—', role: '—', email: null, permissions: [],
 })
-
-const loadMode = async () => {
-  modeLoading.value = true
-  try {
-    const res: any = await apiClient.get('/system/mode')
-    const data = res?.data ?? res
-    currentMode.value = data?.mode ?? 'PASSIVE'
-    modeInfo.value = {
-      operator: data?.operator ?? '—',
-      updated_at: data?.updated_at ?? '',
-      reason: data?.reason ?? null,
-    }
-  } catch {
-    currentMode.value = 'PASSIVE'
-  } finally {
-    modeLoading.value = false
-  }
-}
-
-const confirmSetMode = (mode: string) => {
-  if (mode === 'ACTIVE') {
-    modeReason.value = ''
-    confirmOpen.value = true
-  } else {
-    setMode(mode)
-  }
-}
-
-const setMode = async (mode: string) => {
-  modeSaving.value = true
-  modeMsg.value = ''
-  try {
-    const res: any = await apiClient.post('/system/mode', {
-      mode,
-      reason: modeReason.value || `切换为 ${mode}`,
-    })
-    const data = res?.data ?? res
-    currentMode.value = data?.mode ?? mode
-    modeInfo.value = { operator: data?.operator ?? '—', updated_at: data?.updated_at ?? '', reason: data?.reason ?? null }
-    modeMsgOk.value = true
-    modeMsg.value = `已切换到 ${mode} 模式`
-    confirmOpen.value = false
-    modeReason.value = ''
-  } catch (e: any) {
-    modeMsgOk.value = false
-    modeMsg.value = e?.response?.data?.detail || '切换失败'
-  } finally {
-    modeSaving.value = false
-    setTimeout(() => { modeMsg.value = '' }, 3000)
-  }
-}
 
 const loadVersion = async () => {
   versionLoading.value = true
@@ -336,7 +234,6 @@ const formatTime = (t: string) =>
   t ? new Date(t).toLocaleString('zh-CN') : '—'
 
 onMounted(() => {
-  loadMode()
   loadVersion()
   loadProfile()
 })
