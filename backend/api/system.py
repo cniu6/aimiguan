@@ -350,9 +350,24 @@ async def get_audit_logs(
                     "reason": r.reason,
                     "error_message": r.error_message,
                     "trace_id": r.trace_id,
+                    "integrity_hash": (r.integrity_hash or "")[:16] + "…" if r.integrity_hash else None,
                     "created_at": r.created_at.isoformat().replace("+00:00", "Z") if r.created_at else None,
                 }
                 for r in records
             ],
         },
+    }
+
+
+@router.get("/audit/verify")
+async def verify_audit_chain(
+    limit: int = 200,
+    current_user: User = Depends(require_permissions("view_audit")),
+    db: Session = Depends(get_db),
+):
+    """校验审计日志哈希链完整性"""
+    result = AuditService.verify_chain(db, limit=min(limit, 1000))
+    return {
+        "code": 0,
+        "data": result,
     }

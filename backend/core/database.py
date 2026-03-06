@@ -405,6 +405,8 @@ class AuditLog(Base):
     result = Column(String, nullable=False)
     error_message = Column(Text)
     trace_id = Column(String, nullable=False, index=True)
+    integrity_hash = Column(String)  # SHA-256 哈希链，用于不可篡改校验
+    prev_hash = Column(String)  # 前一条日志的 integrity_hash
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

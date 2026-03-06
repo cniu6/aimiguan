@@ -11,8 +11,8 @@ from core.response import (
     validation_exception_handler,
     general_exception_handler,
 )
-from core.middleware import TraceIDMiddleware
-from api import auth, defense, scan, report, ai_chat, tts, firewall, system, push, overview
+from core.middleware import TraceIDMiddleware, RateLimitMiddleware
+from api import auth, defense, scan, report, ai_chat, tts, firewall, system, push, overview, plugin
 from services.scheduler_service import scheduler_service
 
 
@@ -87,6 +87,7 @@ app.add_middleware(
 )
 
 app.add_middleware(TraceIDMiddleware)
+app.add_middleware(RateLimitMiddleware, global_rpm=120, login_rpm=5)
 
 # Register exception handlers
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
@@ -106,6 +107,7 @@ app.include_router(tts.router)
 app.include_router(firewall.router)
 app.include_router(push.router)
 app.include_router(overview.router)
+app.include_router(plugin.router)
 
 
 @app.get("/api/health")
