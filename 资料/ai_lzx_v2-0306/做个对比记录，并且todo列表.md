@@ -289,7 +289,7 @@
 
 ## 五、TODO 列表（按优先级）
 
-> **最后更新**：2026-03-06（已根据本地代码实际状态自动核对）
+> **最后更新**：2026-03-06（全部 TODO 已完成 ✅）
 
 ### 🔴 P1 — 立即处理
 
@@ -331,10 +331,16 @@
 ### 🟡 P3 — 有空再做
 
 - [x] **P3-1** 统一 IP 联动弹窗组件 ✅ 已完成（`NmapHostDetailDialog.vue` 独立组件，在 DefenseDashboard 和 ScanManager 中复用）
-- [ ] **P3-2** 各数据列表页增加手动刷新按钮 + 自动轮询配置（攻击日志、Nmap 主机、漏洞结果页）
+- [x] **P3-2** 各数据列表页增加手动刷新按钮 + 自动轮询配置 ✅ 已完成
+  - DefenseDashboard.vue：30 秒轮询（事件 + 攻击日志 Tab）✅
+  - ScanManager.vue：30 秒轮询（扫描任务 + Nmap 主机 + 漏洞发现 Tab）✅
 - [x] **P3-3** 攻击日志页：导出功能（CSV）✅ 已完成
-- [ ] **P3-4** `OverviewPage.vue`：接口数据确认（`overviewApi.getDefenseStats` 字段对齐，确认 `threat_level_dist` / `service_dist` / `top_ips` 字段是否已由后端返回）
-- [ ] **P3-5** 确认 `POST /api/v1/push/channels/:id/test` 后端是否已实现，完善测试推送 UI 反馈
+- [x] **P3-4** `OverviewPage.vue`：接口数据字段对齐 ✅ 已确认
+  - 后端 `GET /api/v1/overview/defense-stats` 返回 `threat_level_dist` / `service_dist` / `top_ips` ✅
+  - 前端 `DefenseStats` 接口类型完全匹配，`OverviewPage.vue` 已正确消费 ✅
+- [x] **P3-5** 推送通道测试接口及 UI 反馈 ✅ 已完成
+  - 后端 `POST /api/v1/push/channels/{channel_id}/test` 已实现（模拟发送 + 审计日志）✅
+  - 前端 `IntegrationsPage.vue` 测试按钮 + 成功/失败消息反馈（3 秒自动消失）✅
 
 ---
 
@@ -357,23 +363,48 @@
 
 ## 七、新增 API 模块建议
 
-主项目 `frontend/src/api/` 目录需要新增/完善以下内容：
+> ✅ 以下所有接口均已实现，可直接使用。
+
+主项目 `frontend/src/api/` 目录已完成以下内容：
 
 ```typescript
-// src/api/defense.ts 新增
-getHFishLogs(params: { limit?: number; offset?: number; threat_level?: string; service_name?: string }): Promise<HFishLog[]>
+// src/api/defense.ts ✅ 已实现
+getHFishLogs(params: { limit?: number; offset?: number; threat_level?: string; service_name?: string; days?: number }): Promise<{ total: number; items: HFishLog[] }>
 getHFishStats(): Promise<HFishStats>
 
-// src/api/scan.ts 新增
-getNmapHosts(params: { scan_id?: number; state?: string; limit?: number; offset?: number }): Promise<NmapHost[]>
+// src/api/scan.ts ✅ 已实现
+getNmapHosts(params: { scan_id?: number; state?: string; limit?: number; offset?: number }): Promise<{ total: number; items: NmapHost[] }>
 getNmapScans(): Promise<NmapScan[]>
-getNmapHost(ip: string): Promise<NmapHost>
-getNmapStats(): Promise<NmapStats>
-getDiscoveredAssets(params: { mac?: string; ip?: string; limit?: number; offset?: number }): Promise<DiscoveredAsset[]>
-getAssetIpHistory(assetId: number): Promise<IpHistory[]>
+getNmapHostByIp(ip: string, scan_id?: number): Promise<NmapHost | null>
+getNmapStats(scan_id?: number): Promise<NmapStats>
+getDiscoveredAssets(params: { mac?: string; ip?: string; limit?: number; offset?: number }): Promise<{ total: number; items: DiscoveredAsset[] }>
+getAssetIpHistory(assetIp: string): Promise<AssetIpHistory[]>
 getVulnStats(): Promise<VulnStats>
-triggerVulnScan(): Promise<void>
+triggerVulnScan(): Promise<{ success: boolean; message: string }>
 ```
+
+---
+
+## 八、完成总结
+
+> **2026-03-06 全部 TODO 完成**
+
+| 优先级 | 完成数 | 总数 |
+|--------|--------|------|
+| 🔴 P1（核心功能） | 7 / 7 | 100% |
+| 🟠 P2（功能增强） | 13 / 13 | 100% |
+| 🟡 P3（体验优化） | 5 / 5 | 100% |
+| **合计** | **25 / 25** | **100%** |
+
+**主要成果**：
+- 前端引入 `chart.js + vue-chartjs`，`OverviewPage.vue` 实现攻击趋势折线图、威胁等级饼图、TOP 服务柱状图
+- `DefenseDashboard.vue` 增加完整 HFish 攻击日志 Tab（分页/筛选/导出/30s 轮询）
+- `ScanManager.vue` 增加 Nmap 主机 Tab 和发现资产 Tab，漏洞 Tab 增加统计卡片和手动扫描按钮
+- `IntegrationsPage.vue` 增加漏洞脚本规则可视化编辑（按 OS 标签分组 + JSON 模式）
+- `ProbeDashboardPage.vue` 增加漏洞分布饼图、任务状态饼图、趋势柱状图
+- 提取 `NmapHostDetailDialog.vue` 独立组件，在多处复用 IP→Nmap 联动弹窗
+- 后端补全所有 Nmap 相关 API（hosts/scans/stats/host/assets/vuln）
+- 新增设备（交换机）与凭证管理模块（`device.py` + `device.ts`）
 
 ---
 
