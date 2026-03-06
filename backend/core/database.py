@@ -53,8 +53,12 @@ class ThreatEvent(Base):
     asset_ip = Column(String)
     service_name = Column(String)
     service_type = Column(String)
+    service_port = Column(String)  # HFish: 服务端口
     threat_label = Column(String)
     is_white = Column(Integer, default=0)
+    ip_location = Column(String)  # HFish: IP地理位置
+    client_id = Column(String)  # HFish: 客户端ID
+    client_name = Column(String)  # HFish: 客户端名称
     ai_score = Column(Integer)
     ai_reason = Column(Text)
     action_suggest = Column(String)
@@ -128,9 +132,15 @@ class ScanFinding(Base):
     cve = Column(String)
     severity = Column(String)
     evidence = Column(Text)
+    # Nmap 扫描特有字段
+    mac_address = Column(String)  # MAC地址
+    vendor = Column(String)  # 厂商
+    hostname = Column(String)  # 主机名
+    state = Column(String)  # 主机状态 (up/down)
+    os_type = Column(String)  # 操作系统类型
+    os_accuracy = Column(String)  # OS识别精确度
     status = Column(String, nullable=False, default="NEW")
     trace_id = Column(String, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -364,6 +374,20 @@ class SystemConfigSnapshot(Base):
     env = Column(String, nullable=False, index=True)
     loaded_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class CollectorConfig(Base):
+    """数据采集器配置表（HFish、Nmap等）"""
+    __tablename__ = "collector_config"
+    id = Column(Integer, primary_key=True, index=True)
+    collector_type = Column(String, nullable=False, index=True)  # hfish, nmap
+    config_key = Column(String, nullable=False)
+    config_value = Column(Text)
+    is_sensitive = Column(Integer, default=0)  # 是否敏感信息（如API密钥）
+    enabled = Column(Integer, default=1)
+    description = Column(Text)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 # ── Audit ──

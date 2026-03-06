@@ -1,6 +1,6 @@
 import { apiClient } from './client'
 
-interface ThreatEvent {
+export interface ThreatEvent {
   id: number
   ip: string
   source: string
@@ -8,6 +8,19 @@ interface ThreatEvent {
   ai_reason: string
   status: string
   created_at: string
+}
+
+export interface HFishConfig {
+  host_port: string | null
+  sync_interval: number
+  enabled: boolean
+}
+
+export interface HFishConfigRequest {
+  host_port: string
+  api_key: string
+  sync_interval: number
+  enabled: boolean
 }
 
 export const defenseApi = {
@@ -29,5 +42,19 @@ export const defenseApi = {
 
   async submitAlert(alert: { ip: string; source: string; attack_type?: string }) {
     return apiClient.post('/defense/alerts', alert)
-  }
+  },
+
+  // ── HFish 配置 ──
+  async getHFishConfig(): Promise<HFishConfig> {
+    const res = await apiClient.get('/defense/hfish/config')
+    return res.data
+  },
+
+  async saveHFishConfig(config: HFishConfigRequest) {
+    return apiClient.post('/defense/hfish/config', config)
+  },
+
+  async triggerHFishSync() {
+    return apiClient.post('/defense/hfish/sync')
+  },
 }

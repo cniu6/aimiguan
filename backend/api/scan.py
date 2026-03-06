@@ -742,3 +742,164 @@ async def update_finding_status(
     )
 
     return APIResponse.success(message="Finding status updated")
+
+
+# ===== Nmap 配置和扫描 =====
+
+
+class NmapConfigRequest(BaseModel):
+    nmap_path: str = Field(..., description="Nmap 可执行文件路径")
+    ip_ranges: List[str] = Field(..., description="扫描 IP 范围列表")
+    scan_interval: int = Field(604800, description="扫描间隔（秒），默认7天")
+    enabled: bool = Field(True, description="是否启用")
+
+
+class NmapConfigResponse(BaseModel):
+    nmap_path: Optional[str] = None
+    ip_ranges: List[str] = []
+    scan_interval: int = 604800
+    enabled: bool = False
+
+
+@router.post("/nmap/config")
+async def save_nmap_config(
+    config: NmapConfigRequest,
+    current_user: object = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """保存 Nmap 配置"""
+    from services.nmap_scanner import nmap_scanner
+    
+    try:
+        nmap_scanner.save_config(
+            nmap_path=config.nmap_path,
+            ip_ranges=config.ip_ranges,
+            scan_interval=config.scan_interval,
+            enabled=config.enabled
+        )
+        
+        AuditService.log(
+            db=db,
+            actor=_actor_name(current_user),
+            action="save_nmap_config",
+            target="nmap_config",
+            result="success",
+        )
+        
+        return APIResponse.success(message="Nmap 配置已保存")
+    
+    except Exception as e:
+        AuditService.log(
+            db=db,
+            actor=_actor_name(current_user),
+            action="save_nmap_config",
+            target="nmap_config",
+            result="failed",
+            reason=str(e),
+        )
+        raise HTTPException(status_code=500, detail=f"保存配置失败: {str(e)}")
+
+
+@router.get("/nmap/config", response_model=NmapConfigResponse)
+async def get_nmap_config(
+    current_user: object = Depends(require_role("admin")),
+):
+    """获取 Nmap 配置"""
+    from services.nmap_scanner import nmap_scanner
+    
+    return NmapConfigResponse(
+        nmap_path=nmap_scanner.nmap_path,
+        ip_ranges=nmap_scanner.ip_ranges,
+        scan_interval=nmap_scanner.scan_interval,
+        enabled=nmap_scanner.enabled
+    )
+
+
+@router.post("/nmap/scan")
+async def trigger_nmap_scan(
+    target: str,
+    profile: str = "default",
+    current_user: object = Depends(require_role("operator")),
+    db: Session = Depends(get_db),
+):
+    """手动触发 Nmap 扫描"""
+    from services.nmap_scanner import nmap_scanner
+    import uuid
+    
+    if not nmap_scanner.enabled:
+        raise HTTPException(status_code=400, detail="Nmap 扫描器未启用")
+    
+    if profile not in SCAN_PROFILES:
+        raise HTTPException(status_code=400, detail=f"无效的扫描配置: {profile}")
+    
+    trace_id = f"manual_scan_{uuid.uuid4().hex[:8]}"
+    
+    try:
+        result = await nmap_scanner.scan_target(
+            target=target,
+            profile=profile,
+            db=db,
+            trace_id=trace_id
+        )
+        
+        AuditService.log(
+            db=db,
+            actor=_actor_name(current_user),
+            action="trigger_nmap_scan",
+            target=f"nmap_scan:{target}",
+            target_type="scan_task",
+            result="success" if result["success"] else "failed",
+            reason=result.get("message"),
+        )
+        
+        if result["success"]:
+            return APIResponse.success(
+                data={"task_id": result.get("task_id"), "hosts_count": result.get("hosts_count", 0)},
+                message=result["message"]
+            )
+        else:
+            raise HTTPException(status_code=500, detail=result["message"])
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        AuditService.log(
+            db=db,
+            actor=_actor_name(current_user),
+            action="trigger_nmap_scan",
+            target=f"nmap_scan:{target}",
+            target_type="scan_task",
+            result="failed",
+            reason=str(e),
+        )
+        raise HTTPException(status_code=500, detail=f"扫描失败: {str(e)}")
+
+
+@router.get("/tasks/{task_id}/win7-hosts")
+async def get_win7_hosts(
+    task_id: int,
+    current_user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """获取扫描任务中的 Win7 主机（包含 Windows 7 和 Windows Server 2008 R2）"""
+    from services.nmap_scanner import nmap_scanner
+    
+    # 验证任务存在
+    task = db.query(ScanTask).filter(ScanTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="扫描任务不存在")
+    
+    try:
+        win7_hosts = nmap_scanner.get_win7_hosts(task_id, db)
+        
+        return APIResponse.success(
+            data={
+                "task_id": task_id,
+                "win7_hosts": win7_hosts,
+                "count": len(win7_hosts)
+            },
+            message=f"找到 {len(win7_hosts)} 个 Win7/2008R2 主机"
+        )
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")

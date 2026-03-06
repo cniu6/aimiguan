@@ -161,4 +161,23 @@ export const scanApi = {
   async updateFindingStatus(findingId: number, status: string) {
     return apiClient.put(`/scan/findings/${findingId}/status?status=${status}`)
   },
+
+  // ── Nmap 配置 ──
+  async getNmapConfig(): Promise<{ nmap_path: string | null; ip_ranges: string[]; scan_interval: number; enabled: boolean }> {
+    const res = await apiClient.get('/scan/nmap/config')
+    return res.data
+  },
+
+  async saveNmapConfig(config: { nmap_path: string; ip_ranges: string[]; scan_interval: number; enabled: boolean }) {
+    return apiClient.post('/scan/nmap/config', config)
+  },
+
+  async triggerNmapScan(target?: string, profile?: string) {
+    return apiClient.post('/scan/nmap/scan', { target, profile })
+  },
+
+  async getWin7Hosts(taskId: number) {
+    const res = await apiClient.get(`/scan/tasks/${taskId}/win7-hosts`)
+    return res.data
+  },
 }

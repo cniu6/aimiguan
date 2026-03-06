@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, sessionmaker
 
-from core.database import ExecutionTask, SessionLocal, ThreatEvent, User, get_db
+from core.database import ExecutionTask, SessionLocal, ScanFinding, ThreatEvent, User, get_db
 from api.auth import require_permissions
 from services.ai_engine import ai_engine
 from services.audit_service import AuditService
@@ -1005,3 +1005,176 @@ async def reject_event(
     db.commit()
 
     return {"code": 0, "message": "Event rejected"}
+
+
+# ===== HFish 配置和同步 =====
+
+
+class HFishConfigRequest(BaseModel):
+    host_port: str = Field(..., description="HFish 主机地址和端口，如 127.0.0.1:4433")
+    api_key: str = Field(..., description="HFish API 密钥")
+    sync_interval: int = Field(60, description="同步间隔（秒）")
+    enabled: bool = Field(True, description="是否启用")
+
+
+class HFishConfigResponse(BaseModel):
+    host_port: Optional[str] = None
+    sync_interval: int = 60
+    enabled: bool = False
+
+
+@router.post("/hfish/config")
+async def save_hfish_config(
+    config: HFishConfigRequest,
+    current_user: User = Depends(require_permissions(["system:config"])),
+    db: Session = Depends(get_db),
+):
+    """保存 HFish 配置"""
+    from services.hfish_collector import hfish_collector
+    
+    try:
+        hfish_collector.save_config(
+            host_port=config.host_port,
+            api_key=config.api_key,
+            sync_interval=config.sync_interval,
+            enabled=config.enabled
+        )
+        
+        # 审计日志
+        AuditService.log(
+            db=db,
+            actor=current_user.username,
+            action="SAVE_HFISH_CONFIG",
+            target="hfish_config",
+            result="SUCCESS",
+            trace_id=str(uuid.uuid4())
+        )
+        
+        return {"code": 0, "message": "HFish 配置已保存"}
+    
+    except Exception as e:
+        AuditService.log(
+            db=db,
+            actor=current_user.username,
+            action="SAVE_HFISH_CONFIG",
+            target="hfish_config",
+            result="FAILED",
+            error_message=str(e),
+            trace_id=str(uuid.uuid4())
+        )
+        raise HTTPException(status_code=500, detail=f"保存配置失败: {str(e)}")
+
+
+@router.get("/hfish/config", response_model=HFishConfigResponse)
+async def get_hfish_config(
+    current_user: User = Depends(require_permissions(["system:config"])),
+):
+    """获取 HFish 配置"""
+    from services.hfish_collector import hfish_collector
+    
+    return HFishConfigResponse(
+        host_port=hfish_collector.host_port,
+        sync_interval=hfish_collector.sync_interval,
+        enabled=hfish_collector.enabled
+    )
+
+
+@router.post("/hfish/sync")
+async def trigger_hfish_sync(
+    current_user: User = Depends(require_permissions(["defense:manage"])),
+    db: Session = Depends(get_db),
+):
+    """手动触发 HFish 同步"""
+    from services.hfish_collector import hfish_collector
+    
+    if not hfish_collector.enabled:
+        raise HTTPException(status_code=400, detail="HFish 采集器未启用")
+    
+    trace_id = f"manual_sync_{uuid.uuid4().hex[:8]}"
+    
+    try:
+        result = await hfish_collector.sync_once(trace_id)
+        
+        AuditService.log(
+            db=db,
+            actor=current_user.username,
+            action="TRIGGER_HFISH_SYNC",
+            target="hfish_sync",
+            result="SUCCESS" if result["success"] else "FAILED",
+            reason=result.get("message"),
+            trace_id=trace_id
+        )
+        
+        if result["success"]:
+            return {"code": 0, "message": result["message"], "count": result.get("count", 0)}
+        else:
+            raise HTTPException(status_code=500, detail=result["message"])
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        AuditService.log(
+            db=db,
+            actor=current_user.username,
+            action="TRIGGER_HFISH_SYNC",
+            target="hfish_sync",
+            result="FAILED",
+            error_message=str(e),
+            trace_id=trace_id
+        )
+        raise HTTPException(status_code=500, detail=f"同步失败: {str(e)}")
+
+
+# ── IP 关联查询：通过攻击 IP 查询 Nmap 扫描结果 ──
+
+@router.get("/ip-info/{ip}")
+@compat_router.get("/ip-info/{ip}", include_in_schema=False)
+async def get_ip_scan_info(
+    ip: str,
+    current_user: User = Depends(require_permissions("view_events")),
+    db: Session = Depends(get_db),
+):
+    """
+    查询指定 IP 的 Nmap 扫描结果（关联防御告警与探测数据）
+    返回最新扫描批次中该 IP 的主机信息（OS、端口、服务等）
+    """
+    import json
+
+    # 查询最新的主机发现（state 字段不为空代表是主机级 finding）
+    finding = (
+        db.query(ScanFinding)
+        .filter(
+            ScanFinding.asset == ip,
+            ScanFinding.state.isnot(None),  # 主机级 finding（有 state 字段）
+        )
+        .order_by(ScanFinding.scan_task_id.desc(), ScanFinding.created_at.desc())
+        .first()
+    )
+
+    if not finding:
+        return {"code": 0, "data": None, "message": "未找到该 IP 的扫描记录"}
+
+    # 解析 evidence（包含 open_ports 和 services）
+    evidence = {}
+    if finding.evidence:
+        try:
+            evidence = json.loads(finding.evidence)
+        except Exception:
+            pass
+
+    return {
+        "code": 0,
+        "data": {
+            "ip": finding.asset,
+            "hostname": finding.hostname,
+            "mac_address": finding.mac_address,
+            "vendor": finding.vendor,
+            "state": finding.state,
+            "os_type": finding.os_type,
+            "os_accuracy": finding.os_accuracy,
+            "open_ports": evidence.get("open_ports", []),
+            "services": evidence.get("services", []),
+            "scan_task_id": finding.scan_task_id,
+            "scanned_at": _iso_z(finding.created_at),
+        },
+    }

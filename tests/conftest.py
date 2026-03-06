@@ -95,6 +95,15 @@ def setup_test_database():
         permissions = [
             ("ai_chat", "ai", "chat", "AI 对话"),
             ("view_ai_sessions", "ai", "view", "查看 AI 会话"),
+            ("system:config", "system", "config", "系统配置"),
+            ("defense:manage", "defense", "manage", "防御管理"),
+            ("view_events", "defense", "view", "查看事件"),
+            ("approve_event", "defense", "approve", "批准事件"),
+            ("reject_event", "defense", "reject", "拒绝事件"),
+            ("firewall_sync", "firewall", "sync", "防火墙同步"),
+            ("view_firewall_tasks", "firewall", "view", "查看防火墙任务"),
+            ("scan:execute", "scan", "execute", "执行扫描"),
+            ("scan:view", "scan", "view", "查看扫描"),
         ]
         for name, resource, action, desc in permissions:
             db.execute(
@@ -113,6 +122,50 @@ def setup_test_database():
                 """
                 INSERT OR IGNORE INTO role_permission (role_id, permission_id, created_at)
                 SELECT 1, id, :now FROM permission
+                """
+            ),
+            {"now": now}
+        )
+        
+        # 创建 operator 角色
+        db.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO role (id, name, description, created_at, updated_at)
+                VALUES (2, 'operator', 'Operator', :now, :now)
+                """
+            ),
+            {"now": now}
+        )
+        
+        # 创建 operator 用户
+        operator_password_hash = hashlib.sha256("operator123".encode()).hexdigest()
+        db.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO user (id, username, password_hash, email, enabled, created_at, updated_at)
+                VALUES (2, 'operator', :password_hash, 'operator@example.com', 1, :now, :now)
+                """
+            ),
+            {"password_hash": operator_password_hash, "now": now}
+        )
+        
+        # 关联 operator 用户和角色
+        db.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO user_role (user_id, role_id)
+                VALUES (2, 2)
+                """
+            )
+        )
+        
+        # 给 operator 角色分配扫描权限
+        db.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO role_permission (role_id, permission_id, created_at)
+                SELECT 2, id, :now FROM permission WHERE name IN ('scan:execute', 'scan:view')
                 """
             ),
             {"now": now}
@@ -143,6 +196,103 @@ def db():
         yield session
     finally:
         session.close()
+
+
+@pytest.fixture(scope="function")
+def test_db():
+    """测试数据库会话别名（与 db 相同）"""
+    session = TestingSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture(scope="session")
+def admin_token(client):
+    """管理员 token"""
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "admin", "password": "admin123"}
+    )
+    return response.json()["access_token"]
+
+
+@pytest.fixture
+def operator_token(client, setup_test_database):
+    """操作员 token - operator 用户已在 setup_test_database 中创建"""
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "operator", "password": "operator123"}
+    )
+    print(f"Login response status: {response.status_code}")
+    print(f"Login response body: {response.json()}")
+    assert response.status_code == 200, f"Login failed: {response.json()}"
+    return response.json()["access_token"]
+
+
+@pytest.fixture(scope="session")
+def viewer_token(client, setup_test_database):
+    """只读用户 token"""
+    db = TestingSessionLocal()
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    
+    try:
+        # 创建 viewer 角色
+        db.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO role (id, name, description, created_at, updated_at)
+                VALUES (3, 'viewer', 'Viewer', :now, :now)
+                """
+            ),
+            {"now": now}
+        )
+        
+        # 创建 viewer 用户
+        import hashlib
+        password_hash = hashlib.sha256("viewer123".encode()).hexdigest()
+        db.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO user (id, username, password_hash, email, enabled, created_at, updated_at)
+                VALUES (3, 'viewer', :password_hash, 'viewer@example.com', 1, :now, :now)
+                """
+            ),
+            {"password_hash": password_hash, "now": now}
+        )
+        
+        # 关联用户和角色
+        db.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO user_role (user_id, role_id)
+                VALUES (3, 3)
+                """
+            )
+        )
+        
+        # 给 viewer 角色分配只读权限
+        db.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO role_permission (role_id, permission_id, created_at)
+                SELECT 3, id, :now FROM permission WHERE name IN ('scan:view', 'view_events')
+                """
+            ),
+            {"now": now}
+        )
+        
+        db.commit()
+    finally:
+        db.close()
+    
+    # 登录获取 token
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"username": "viewer", "password": "viewer123"}
+    )
+    return response.json()["access_token"]
 
 
 @pytest.fixture(scope="function", autouse=True)

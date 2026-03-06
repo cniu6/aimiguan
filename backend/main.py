@@ -12,7 +12,8 @@ from core.response import (
     general_exception_handler,
 )
 from core.middleware import TraceIDMiddleware
-from api import auth, defense, scan, report, ai_chat, tts, firewall, system, push
+from api import auth, defense, scan, report, ai_chat, tts, firewall, system, push, overview
+from services.scheduler_service import scheduler_service
 
 
 def print_banner():
@@ -44,6 +45,11 @@ async def lifespan(app: FastAPI):
     print("✓ 数据库初始化完成")
     print("✓ API 路由注册完成")
     print("✓ 中间件加载完成")
+    
+    # 启动后台调度服务
+    await scheduler_service.start()
+    print("✓ 后台调度服务已启动")
+    
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("🌐 服务地址: http://0.0.0.0:8000")
     print("📚 API 文档: http://0.0.0.0:8000/docs")
@@ -55,6 +61,11 @@ async def lifespan(app: FastAPI):
     # Shutdown
     print("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("🛑 正在关闭服务...")
+    
+    # 停止后台调度服务
+    await scheduler_service.stop()
+    print("✓ 后台调度服务已停止")
+    
     print("✓ 数据库连接已关闭")
     print("✓ 系统已安全退出")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
@@ -94,6 +105,7 @@ app.include_router(ai_chat.router)
 app.include_router(tts.router)
 app.include_router(firewall.router)
 app.include_router(push.router)
+app.include_router(overview.router)
 
 
 @app.get("/api/health")

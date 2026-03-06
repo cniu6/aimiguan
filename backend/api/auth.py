@@ -55,14 +55,20 @@ def get_user_permissions(user: User, db: Session) -> list[str]:
     return sorted(names)
 
 
-def require_permissions(*required_permissions: str):
+def require_permissions(*required_permissions):
     async def _permission_dependency(
         request: Request,
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> User:
+        # Handle both list and individual string arguments
+        if len(required_permissions) == 1 and isinstance(required_permissions[0], list):
+            perms = required_permissions[0]
+        else:
+            perms = required_permissions
+        
         permissions = set(get_user_permissions(current_user, db))
-        missing = [name for name in required_permissions if name not in permissions]
+        missing = [name for name in perms if name not in permissions]
         if missing:
             trace_id = getattr(request.state, "trace_id", None)
             raise HTTPException(status_code=403, detail={
