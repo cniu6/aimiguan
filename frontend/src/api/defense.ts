@@ -23,6 +23,28 @@ export interface HFishConfigRequest {
   enabled: boolean
 }
 
+// ── HFish 攻击日志 ──
+export interface HFishLog {
+  id: number
+  attack_ip: string
+  ip_location: string
+  client_id: string
+  client_name: string
+  service_name: string
+  service_port: string
+  threat_level: string
+  create_time_str: string
+  create_time_timestamp: number
+}
+
+export interface HFishStats {
+  total: number
+  threat_stats: { level: string; count: number }[]
+  service_stats: { name: string; count: number }[]
+  ip_stats: { ip: string; count: number }[]
+  time_stats: { date: string; count: number }[]
+}
+
 export const defenseApi = {
   async getPendingEvents(): Promise<ThreatEvent[]> {
     return apiClient.get('/defense/events', { params: { status: 'PENDING' } })
@@ -56,5 +78,21 @@ export const defenseApi = {
 
   async triggerHFishSync() {
     return apiClient.post('/defense/hfish/sync')
+  },
+
+  // ── HFish 攻击日志 ──
+  async getHFishLogs(params?: {
+    limit?: number
+    offset?: number
+    threat_level?: string
+    service_name?: string
+  }): Promise<HFishLog[]> {
+    const res = await apiClient.get('/defense/hfish/logs', { params })
+    return Array.isArray(res.data) ? res.data : (res.data?.items ?? [])
+  },
+
+  async getHFishStats(): Promise<HFishStats> {
+    const res = await apiClient.get('/defense/hfish/stats')
+    return res.data
   },
 }

@@ -26,6 +26,11 @@
           漏洞发现
           <Badge v-if="findingTotal > 0" variant="secondary" class="ml-1 h-5 px-1.5 text-xs">{{ findingTotal }}</Badge>
         </TabsTrigger>
+        <TabsTrigger value="nmap-hosts" class="gap-2">
+          <Monitor class="size-4" />
+          Nmap 主机
+          <Badge v-if="nmapHostTotal > 0" variant="secondary" class="ml-1 h-5 px-1.5 text-xs">{{ nmapHostTotal }}</Badge>
+        </TabsTrigger>
       </TabsList>
 
       <!-- ===== Tab: 资产管理 ===== -->
@@ -319,6 +324,54 @@
 
       <!-- ===== Tab: 漏洞发现 ===== -->
       <TabsContent value="findings" class="space-y-4">
+        <!-- 漏洞统计卡片 -->
+        <div class="grid gap-3 md:grid-cols-4">
+          <Card class="border-red-500/20">
+            <CardContent class="pt-4 pb-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-xs text-muted-foreground">存在漏洞</p>
+                  <p class="text-2xl font-bold text-red-400 mt-0.5">{{ vulnStats?.vulnerable ?? '—' }}</p>
+                </div>
+                <AlertTriangle class="size-6 text-red-400/50" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card class="border-emerald-500/20">
+            <CardContent class="pt-4 pb-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-xs text-muted-foreground">已确认安全</p>
+                  <p class="text-2xl font-bold text-emerald-400 mt-0.5">{{ vulnStats?.safe ?? '—' }}</p>
+                </div>
+                <ShieldCheck class="size-6 text-emerald-400/50" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card class="border-amber-500/20">
+            <CardContent class="pt-4 pb-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-xs text-muted-foreground">受影响设备</p>
+                  <p class="text-2xl font-bold text-amber-400 mt-0.5">{{ vulnStats?.vulnerable_devices ?? '—' }}</p>
+                </div>
+                <Monitor class="size-6 text-amber-400/50" />
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent class="pt-4 pb-3">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-xs text-muted-foreground">扫描失败</p>
+                  <p class="text-2xl font-bold text-muted-foreground mt-0.5">{{ vulnStats?.error ?? '—' }}</p>
+                </div>
+                <AlertTriangle class="size-6 text-muted-foreground/40" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         <!-- Findings Toolbar -->
         <div class="flex items-center gap-3 flex-wrap">
           <div class="flex gap-1">
@@ -348,6 +401,15 @@
           <Button variant="outline" size="sm" class="cursor-pointer gap-1 ml-auto" @click="loadFindings(findingPage)">
             <RefreshCw class="size-3.5" />
             刷新
+          </Button>
+          <Button
+            size="sm"
+            class="cursor-pointer gap-1.5"
+            :disabled="vulnScanning"
+            @click="triggerVulnScan"
+          >
+            <Scan class="size-3.5" :class="vulnScanning ? 'animate-pulse' : ''" />
+            {{ vulnScanning ? '扫描中…' : '立即漏洞扫描' }}
           </Button>
         </div>
 
@@ -425,7 +487,222 @@
           </div>
         </div>
       </TabsContent>
+
+      <!-- ===== Tab: Nmap 主机 ===== -->
+      <TabsContent value="nmap-hosts" class="space-y-4">
+        <!-- Toolbar -->
+        <div class="flex items-center gap-3 flex-wrap">
+          <!-- 扫描历史选择 -->
+          <select
+            v-model="selectedScanId"
+            class="h-8 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+            @change="loadNmapHosts()"
+          >
+            <option value="">最新扫描</option>
+            <option v-for="scan in nmapScans" :key="scan.id" :value="scan.id">
+              #{{ scan.id }} - {{ scan.scan_time }} ({{ scan.hosts_count }} 台)
+            </option>
+          </select>
+
+          <!-- 状态筛选 -->
+          <div class="flex gap-1">
+            <Button
+              v-for="s in [{ v: '', l: '全部' }, { v: 'up', l: '在线' }, { v: 'down', l: '离线' }]"
+              :key="s.v"
+              :variant="nmapStateFilter === s.v ? 'default' : 'outline'"
+              size="sm"
+              class="cursor-pointer"
+              @click="nmapStateFilter = s.v; loadNmapHosts()"
+            >
+              {{ s.l }}
+            </Button>
+          </div>
+
+          <Button variant="outline" size="sm" class="cursor-pointer gap-1 ml-auto" :disabled="nmapHostLoading" @click="loadNmapHosts()">
+            <RefreshCw class="size-3.5" :class="nmapHostLoading ? 'animate-spin' : ''" />
+            刷新
+          </Button>
+          <Button
+            size="sm"
+            class="cursor-pointer gap-1.5"
+            :disabled="nmapScanning"
+            @click="triggerNmapScan"
+          >
+            <Scan class="size-3.5" :class="nmapScanning ? 'animate-pulse' : ''" />
+            {{ nmapScanning ? '扫描中…' : '立即扫描' }}
+          </Button>
+        </div>
+
+        <!-- Nmap 统计 -->
+        <div v-if="nmapStats" class="grid gap-3 md:grid-cols-3">
+          <Card v-for="s in nmapStats.state_stats" :key="s.state">
+            <CardContent class="pt-3 pb-3">
+              <p class="text-xs text-muted-foreground">{{ s.state === 'up' ? '在线主机' : '离线主机' }}</p>
+              <p class="text-xl font-bold mt-0.5" :class="s.state === 'up' ? 'text-emerald-400' : 'text-muted-foreground'">{{ s.count }}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <!-- 主机列表 -->
+        <div class="rounded-lg border border-border overflow-hidden">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-muted/30 border-b border-border">
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">IP 地址</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">MAC / 厂商</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">操作系统</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">OS 标签</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">状态</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">开放端口</th>
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="nmapHostLoading">
+                <td colspan="7" class="text-center py-10 text-muted-foreground text-sm">加载中...</td>
+              </tr>
+              <tr v-else-if="nmapHosts.length === 0">
+                <td colspan="7" class="py-12">
+                  <div class="flex flex-col items-center gap-2 text-muted-foreground">
+                    <Monitor class="size-10 opacity-30" />
+                    <span class="text-sm">暂无主机数据，请先执行 Nmap 扫描</span>
+                  </div>
+                </td>
+              </tr>
+              <tr v-for="host in nmapHosts" :key="host.id" class="border-b border-border/50 hover:bg-muted/20">
+                <td class="px-4 py-2.5 font-mono text-sm font-medium">{{ host.ip }}</td>
+                <td class="px-4 py-2.5">
+                  <p class="font-mono text-xs">{{ host.mac_address || '—' }}</p>
+                  <p class="text-xs text-muted-foreground">{{ host.vendor || '' }}</p>
+                </td>
+                <td class="px-4 py-2.5 text-xs max-w-[180px]">
+                  <p class="truncate">{{ host.os_type || '未识别' }}</p>
+                  <p v-if="host.os_accuracy" class="text-muted-foreground">精确度 {{ host.os_accuracy }}%</p>
+                </td>
+                <td class="px-4 py-2.5">
+                  <div class="flex flex-wrap gap-1">
+                    <Badge
+                      v-for="tag in (host.os_tags || '').split(',').filter(Boolean)"
+                      :key="tag"
+                      variant="outline"
+                      class="text-xs h-5 px-1"
+                    >{{ tag }}</Badge>
+                  </div>
+                </td>
+                <td class="px-4 py-2.5">
+                  <Badge :class="host.state === 'up' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-muted text-muted-foreground'">
+                    {{ host.state }}
+                  </Badge>
+                </td>
+                <td class="px-4 py-2.5 text-xs text-muted-foreground">
+                  {{ Array.isArray(host.open_ports) ? host.open_ports.length : 0 }} 个端口
+                </td>
+                <td class="px-4 py-2.5">
+                  <Button variant="ghost" size="sm" class="cursor-pointer h-6 text-xs gap-1" @click="openNmapHostDetail(host)">
+                    <Eye class="size-3" />
+                    详情
+                  </Button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Nmap 主机分页 -->
+        <div class="flex items-center justify-between text-sm text-muted-foreground">
+          <span>共 {{ nmapHostTotal }} 台主机</span>
+          <div class="flex gap-1">
+            <Button variant="outline" size="sm" class="cursor-pointer" :disabled="nmapHostOffset === 0" @click="loadNmapHosts(nmapHostOffset - NMAP_LIMIT)">
+              <ChevronLeft class="size-4" />
+            </Button>
+            <span class="px-3 py-1 text-xs">第 {{ Math.floor(nmapHostOffset / NMAP_LIMIT) + 1 }} 页</span>
+            <Button variant="outline" size="sm" class="cursor-pointer" :disabled="nmapHostOffset + NMAP_LIMIT >= nmapHostTotal" @click="loadNmapHosts(nmapHostOffset + NMAP_LIMIT)">
+              <ChevronRight class="size-4" />
+            </Button>
+          </div>
+        </div>
+      </TabsContent>
     </Tabs>
+
+    <!-- Nmap 主机详情弹窗 -->
+    <div
+      v-if="nmapHostDetailOpen"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      @click.self="nmapHostDetailOpen = false"
+    >
+      <div class="mx-4 w-full max-w-xl rounded-xl border border-border bg-background shadow-2xl max-h-[80vh] flex flex-col">
+        <div class="flex items-center justify-between border-b border-border px-5 py-4 shrink-0">
+          <div class="flex items-center gap-2">
+            <Monitor class="size-4 text-primary" />
+            <span class="font-semibold text-sm">主机详情</span>
+            <code class="text-xs text-muted-foreground ml-1">{{ selectedNmapHost?.ip }}</code>
+          </div>
+          <button class="text-muted-foreground hover:text-foreground transition-colors" @click="nmapHostDetailOpen = false">
+            <X class="size-4" />
+          </button>
+        </div>
+        <div v-if="selectedNmapHost" class="p-5 space-y-4 overflow-y-auto">
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <div class="rounded-lg border border-border px-3 py-2.5 space-y-0.5">
+              <p class="text-xs text-muted-foreground">操作系统</p>
+              <p class="font-medium text-sm">{{ selectedNmapHost.os_type || '未识别' }}</p>
+              <p v-if="selectedNmapHost.os_accuracy" class="text-xs text-muted-foreground">精确度 {{ selectedNmapHost.os_accuracy }}%</p>
+            </div>
+            <div class="rounded-lg border border-border px-3 py-2.5 space-y-0.5">
+              <p class="text-xs text-muted-foreground">主机名 / 厂商</p>
+              <p class="font-medium text-sm">{{ selectedNmapHost.hostname || '—' }}</p>
+              <p class="text-xs text-muted-foreground">{{ selectedNmapHost.vendor || '未知厂商' }}</p>
+            </div>
+            <div class="rounded-lg border border-border px-3 py-2.5 space-y-0.5">
+              <p class="text-xs text-muted-foreground">MAC 地址</p>
+              <code class="text-xs">{{ selectedNmapHost.mac_address || '—' }}</code>
+            </div>
+            <div class="rounded-lg border border-border px-3 py-2.5 space-y-0.5">
+              <p class="text-xs text-muted-foreground">开放端口数</p>
+              <p class="font-semibold text-primary">{{ Array.isArray(selectedNmapHost.open_ports) ? selectedNmapHost.open_ports.length : 0 }}</p>
+            </div>
+          </div>
+
+          <!-- OS 标签 -->
+          <div v-if="selectedNmapHost.os_tags" class="space-y-1.5">
+            <p class="text-xs font-medium text-muted-foreground">系统标签</p>
+            <div class="flex flex-wrap gap-1">
+              <Badge
+                v-for="tag in selectedNmapHost.os_tags.split(',').filter(Boolean)"
+                :key="tag"
+                variant="outline"
+                class="text-xs"
+              >{{ tag }}</Badge>
+            </div>
+          </div>
+
+          <!-- 开放服务 -->
+          <div v-if="selectedNmapHost.services?.length" class="space-y-1.5">
+            <p class="text-xs font-medium text-muted-foreground">开放服务（{{ selectedNmapHost.services.length }} 个）</p>
+            <div class="rounded-lg border border-border overflow-hidden">
+              <table class="w-full text-xs">
+                <thead>
+                  <tr class="bg-muted/40 border-b border-border">
+                    <th class="px-3 py-1.5 text-left text-muted-foreground font-medium">端口</th>
+                    <th class="px-3 py-1.5 text-left text-muted-foreground font-medium">服务</th>
+                    <th class="px-3 py-1.5 text-left text-muted-foreground font-medium">产品/版本</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="svc in selectedNmapHost.services" :key="svc.port" class="border-b border-border/50">
+                    <td class="px-3 py-1.5 font-mono font-semibold">{{ svc.port }}</td>
+                    <td class="px-3 py-1.5">{{ svc.service || '—' }}</td>
+                    <td class="px-3 py-1.5 text-muted-foreground">{{ [svc.product, svc.version].filter(Boolean).join(' ') || '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <p class="text-xs text-muted-foreground text-right">扫描时间: {{ selectedNmapHost.scan_time }}</p>
+        </div>
+      </div>
+    </div>
 
     <!-- Task Detail Dialog -->
     <Dialog v-model:open="showTaskDetail">
@@ -530,16 +807,17 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { scanApi, type Asset, type ScanTask, type ScanFinding, type ScanProfile } from '@/api/scan'
+import { scanApi, type Asset, type ScanTask, type ScanFinding, type ScanProfile, type NmapHost, type NmapScan, type NmapStats, type VulnStats } from '@/api/scan'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Search, Eye, Trash2, RefreshCw, Shield, Target, Bug, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Monitor, Plus, RefreshCw, Scan, Search, Shield, ShieldCheck, Target, Trash2, Bug, X } from 'lucide-vue-next'
 
 // ===== Active Tab =====
 const activeTab = ref('assets')
@@ -797,11 +1075,89 @@ const getSeverityColor = (severity: string) => {
   return map[severity] || 'bg-muted text-muted-foreground'
 }
 
+// ===== Vuln Stats & Scan =====
+const vulnStats = ref<VulnStats | null>(null)
+const vulnScanning = ref(false)
+
+const loadVulnStats = async () => {
+  try {
+    vulnStats.value = await scanApi.getVulnStats()
+  } catch (e) { console.error(e) }
+}
+
+const triggerVulnScan = async () => {
+  vulnScanning.value = true
+  try {
+    await scanApi.triggerVulnScan()
+    setTimeout(() => { loadVulnStats(); vulnScanning.value = false }, 3000)
+  } catch (e) { console.error(e); vulnScanning.value = false }
+}
+
+// ===== Nmap 主机 =====
+const NMAP_LIMIT = 50
+const nmapHosts = ref<NmapHost[]>([])
+const nmapScans = ref<NmapScan[]>([])
+const nmapStats = ref<NmapStats | null>(null)
+const nmapHostTotal = ref(0)
+const nmapHostOffset = ref(0)
+const nmapHostLoading = ref(false)
+const nmapScanning = ref(false)
+const selectedScanId = ref<number | ''>('')
+const nmapStateFilter = ref('')
+
+// Nmap 主机详情弹窗
+const nmapHostDetailOpen = ref(false)
+const selectedNmapHost = ref<NmapHost | null>(null)
+
+const openNmapHostDetail = (host: NmapHost) => {
+  selectedNmapHost.value = host
+  nmapHostDetailOpen.value = true
+}
+
+const loadNmapScans = async () => {
+  try {
+    nmapScans.value = await scanApi.getNmapScans()
+  } catch (e) { console.error(e) }
+}
+
+const loadNmapStats = async () => {
+  try {
+    nmapStats.value = await scanApi.getNmapStats()
+  } catch (e) { console.error(e) }
+}
+
+const loadNmapHosts = async (offset = 0) => {
+  nmapHostLoading.value = true
+  nmapHostOffset.value = offset
+  try {
+    const hosts = await scanApi.getNmapHosts({
+      scan_id: selectedScanId.value || undefined,
+      state: nmapStateFilter.value || undefined,
+      limit: NMAP_LIMIT,
+      offset,
+    })
+    nmapHosts.value = hosts
+    nmapHostTotal.value = hosts.length < NMAP_LIMIT ? offset + hosts.length : offset + NMAP_LIMIT + 1
+  } catch (e) { console.error(e) } finally { nmapHostLoading.value = false }
+}
+
+const triggerNmapScan = async () => {
+  nmapScanning.value = true
+  try {
+    await scanApi.triggerNmapScan()
+    setTimeout(() => {
+      loadNmapScans(); loadNmapHosts(); loadNmapStats()
+      nmapScanning.value = false
+    }, 5000)
+  } catch (e) { console.error(e); nmapScanning.value = false }
+}
+
 // ===== Init =====
 watch(activeTab, (tab) => {
   if (tab === 'assets') loadAssets(1)
   else if (tab === 'tasks') loadTasks(1)
-  else if (tab === 'findings') loadFindings(1)
+  else if (tab === 'findings') { loadFindings(1); loadVulnStats() }
+  else if (tab === 'nmap-hosts') { loadNmapHosts(); loadNmapScans(); loadNmapStats() }
 })
 
 onMounted(async () => {

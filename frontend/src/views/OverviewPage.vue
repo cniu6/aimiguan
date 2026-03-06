@@ -8,7 +8,6 @@
           <p class="text-sm text-muted-foreground">防御处置链路与核心安全指标总览</p>
         </div>
         <div class="flex items-center gap-2">
-          <!-- 时间范围选择 -->
           <select
             v-model="range"
             class="h-8 rounded-md border border-border bg-background px-2 text-sm text-foreground"
@@ -46,31 +45,15 @@
       <div class="grid gap-4 lg:grid-cols-2">
         <!-- 告警趋势折线图 -->
         <Card>
-          <CardHeader class="pb-3">
+          <CardHeader class="pb-3 flex-row items-center justify-between">
             <CardTitle class="text-base">告警趋势</CardTitle>
+            <span class="text-xs text-muted-foreground">{{ range }} 范围</span>
           </CardHeader>
           <CardContent>
-            <div v-if="loading" class="h-40 flex items-center justify-center text-muted-foreground text-sm">加载中…</div>
-            <div v-else-if="trends.alert_trend.length === 0" class="h-40 flex items-center justify-center text-muted-foreground text-sm">暂无数据</div>
-            <div v-else class="space-y-1">
-              <!-- 简易条形趋势 -->
-              <div class="flex items-end gap-1 h-32">
-                <div
-                  v-for="pt in trends.alert_trend"
-                  :key="pt.date"
-                  class="flex-1 flex flex-col items-center gap-1"
-                >
-                  <div
-                    class="w-full rounded-sm bg-primary/70 transition-all"
-                    :style="{ height: barHeight(pt.count, maxAlertCount) + 'px' }"
-                    :title="`${pt.date}: ${pt.count} 条`"
-                  />
-                </div>
-              </div>
-              <div class="flex justify-between text-[10px] text-muted-foreground">
-                <span>{{ trends.alert_trend[0]?.date }}</span>
-                <span>{{ trends.alert_trend[trends.alert_trend.length - 1]?.date }}</span>
-              </div>
+            <div v-if="loading" class="h-44 flex items-center justify-center text-muted-foreground text-sm">加载中…</div>
+            <div v-else-if="trends.alert_trend.length === 0" class="h-44 flex items-center justify-center text-muted-foreground text-sm">暂无数据</div>
+            <div v-else class="h-44">
+              <Line :data="alertTrendChartData" :options="lineChartOptions" />
             </div>
           </CardContent>
         </Card>
@@ -102,7 +85,6 @@
               </div>
               <Badge :class="scoreColor(ev.ai_score)" class="text-xs shrink-0">{{ ev.ai_score ?? '—' }}</Badge>
             </div>
-            <!-- 失败任务 -->
             <template v-if="todos?.failed_tasks.length">
               <p class="pt-1 text-xs font-medium text-muted-foreground">需人工介入</p>
               <div
@@ -118,40 +100,55 @@
         </Card>
       </div>
 
-      <!-- 威胁分布 + 链路状态 -->
+      <!-- 威胁等级饼图 + 被攻击服务柱状图 -->
       <div class="grid gap-4 lg:grid-cols-2">
-        <!-- 威胁等级分布 -->
+        <!-- 威胁等级分布饼图 -->
         <Card>
           <CardHeader class="pb-3 flex-row items-center justify-between">
             <CardTitle class="text-base">威胁等级分布</CardTitle>
             <span class="text-xs text-muted-foreground">{{ range }} 范围</span>
           </CardHeader>
-          <CardContent class="space-y-2">
-            <div v-if="loading" class="space-y-2">
-              <Skeleton v-for="i in 4" :key="i" class="h-8 w-full rounded" />
+          <CardContent>
+            <div v-if="loading" class="h-52 flex items-center justify-center">
+              <Skeleton class="size-40 rounded-full" />
             </div>
-            <div v-else>
-              <div
-                v-for="item in defenseStats?.threat_level_dist"
-                :key="item.level"
-                class="flex items-center justify-between rounded-md border border-border px-3 py-2"
-              >
-                <div class="flex items-center gap-2">
-                  <Badge :class="levelColor(item.level)" class="text-xs w-20 justify-center">{{ item.level }}</Badge>
-                  <div class="h-2 w-28 overflow-hidden rounded-full bg-muted">
-                    <div
-                      :class="levelBarColor(item.level)"
-                      class="h-full rounded-full transition-all"
-                      :style="{ width: levelPct(item.count) + '%' }"
-                    />
-                  </div>
+            <div v-else-if="!defenseStats?.threat_level_dist?.length" class="h-52 flex items-center justify-center text-muted-foreground text-sm">暂无数据</div>
+            <div v-else class="flex items-center gap-6">
+              <div class="h-52 flex-1 min-w-0">
+                <Doughnut :data="threatPieChartData" :options="doughnutOptions" />
+              </div>
+              <div class="space-y-2 shrink-0">
+                <div
+                  v-for="item in defenseStats.threat_level_dist"
+                  :key="item.level"
+                  class="flex items-center gap-2 text-xs"
+                >
+                  <span class="size-2.5 rounded-sm shrink-0" :style="{ background: levelPieColor(item.level) }"></span>
+                  <span class="text-muted-foreground">{{ item.level }}</span>
+                  <span class="font-semibold tabular-nums ml-auto pl-3">{{ item.count }}</span>
                 </div>
-                <span class="text-sm font-semibold tabular-nums">{{ item.count }}</span>
               </div>
             </div>
           </CardContent>
         </Card>
 
+        <!-- TOP 被攻击服务柱状图 -->
+        <Card>
+          <CardHeader class="pb-3">
+            <CardTitle class="text-base">TOP 被攻击服务</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div v-if="loading" class="h-52 flex items-center justify-center text-muted-foreground text-sm">加载中…</div>
+            <div v-else-if="!defenseStats?.service_dist?.length" class="h-52 flex items-center justify-center text-muted-foreground text-sm">暂无数据</div>
+            <div v-else class="h-52">
+              <Bar :data="serviceBarChartData" :options="barChartOptions" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <!-- 链路状态 + TOP 攻击 IP -->
+      <div class="grid gap-4 lg:grid-cols-2">
         <!-- 链路健康状态 -->
         <Card>
           <CardHeader class="pb-3">
@@ -170,41 +167,50 @@
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      <!-- TOP 攻击 IP -->
-      <Card v-if="!loading && defenseStats?.top_ips.length">
-        <CardHeader class="pb-3 flex-row items-center gap-2">
-          <AlertTriangle class="size-4 text-amber-400" />
-          <CardTitle class="text-base">TOP 攻击来源 IP</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div class="rounded-lg border border-border overflow-hidden">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="border-b border-border bg-muted/30">
-                  <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">IP</th>
-                  <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">攻击次数</th>
-                  <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">最高评分</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="ip in defenseStats.top_ips"
-                  :key="ip.ip"
-                  class="border-b border-border/50 hover:bg-muted/20"
-                >
-                  <td class="px-4 py-2 font-mono text-xs">{{ ip.ip }}</td>
-                  <td class="px-4 py-2 text-xs">{{ ip.count }}</td>
-                  <td class="px-4 py-2">
-                    <Badge :class="scoreColor(ip.max_score)" class="text-xs">{{ ip.max_score ?? '—' }}</Badge>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+        <!-- TOP 攻击 IP -->
+        <Card v-if="defenseStats?.top_ips?.length">
+          <CardHeader class="pb-3 flex-row items-center gap-2">
+            <AlertTriangle class="size-4 text-amber-400" />
+            <CardTitle class="text-base">TOP 攻击来源 IP</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div class="rounded-lg border border-border overflow-hidden">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-border bg-muted/30">
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">IP</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">攻击次数</th>
+                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">最高评分</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="ip in defenseStats.top_ips"
+                    :key="ip.ip"
+                    class="border-b border-border/50 hover:bg-muted/20"
+                  >
+                    <td class="px-4 py-2 font-mono text-xs">{{ ip.ip }}</td>
+                    <td class="px-4 py-2 text-xs">{{ ip.count }}</td>
+                    <td class="px-4 py-2">
+                      <Badge :class="scoreColor(ip.max_score)" class="text-xs">{{ ip.max_score ?? '—' }}</Badge>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+        <Card v-else-if="!loading && defenseStats">
+          <CardHeader class="pb-3 flex-row items-center gap-2">
+            <AlertTriangle class="size-4 text-amber-400" />
+            <CardTitle class="text-base">TOP 攻击来源 IP</CardTitle>
+          </CardHeader>
+          <CardContent class="h-28 flex items-center justify-center text-muted-foreground text-sm">
+            暂无攻击数据
+          </CardContent>
+        </Card>
+      </div>
     </div>
   </div>
 </template>
@@ -212,11 +218,30 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { AlertTriangle, RefreshCw, Shield, ShieldAlert, Target, TrendingUp } from 'lucide-vue-next'
+import { Line, Bar, Doughnut } from 'vue-chartjs'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+} from 'chart.js'
 import { overviewApi, type OverviewMetrics, type OverviewTrends, type OverviewTodos, type DefenseStats, type TrendRange } from '@/api/overview'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+
+ChartJS.register(
+  CategoryScale, LinearScale, PointElement, LineElement,
+  BarElement, ArcElement, Title, Tooltip, Legend, Filler
+)
 
 const loading = ref(false)
 const range = ref<TrendRange>('7d')
@@ -261,14 +286,6 @@ const kpiCards = computed(() => {
   ]
 })
 
-const maxAlertCount = computed(() =>
-  Math.max(1, ...trends.value.alert_trend.map(p => p.count))
-)
-
-const totalLevelCount = computed(() =>
-  Math.max(1, defenseStats.value?.threat_level_dist.reduce((s, i) => s + i.count, 0) ?? 1)
-)
-
 const chainStatus = computed(() => {
   const d = metrics.value?.defense
   const p = metrics.value?.probe
@@ -280,30 +297,121 @@ const chainStatus = computed(() => {
   ]
 })
 
-const barHeight = (count: number, max: number) =>
-  Math.max(4, Math.round((count / max) * 112))
+// ── 图表数据 ──
 
-const levelPct = (count: number) =>
-  Math.round((count / totalLevelCount.value) * 100)
-
-const levelColor = (level: string) => {
-  const map: Record<string, string> = {
-    CRITICAL: 'bg-red-500/15 text-red-400 border-red-500/30',
-    HIGH: 'bg-orange-500/15 text-orange-400 border-orange-500/30',
-    MEDIUM: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
-    LOW: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
-  }
-  return map[level] ?? 'bg-muted text-muted-foreground'
+const CHART_COLORS = {
+  primary: 'rgba(99, 102, 241, 1)',
+  primaryAlpha: 'rgba(99, 102, 241, 0.15)',
+  high: 'rgba(239, 68, 68, 0.85)',
+  medium: 'rgba(245, 158, 11, 0.85)',
+  low: 'rgba(59, 130, 246, 0.85)',
+  critical: 'rgba(220, 38, 38, 0.9)',
+  info: 'rgba(107, 114, 128, 0.7)',
 }
 
-const levelBarColor = (level: string) => {
-  const map: Record<string, string> = {
-    CRITICAL: 'bg-red-500',
-    HIGH: 'bg-orange-500',
-    MEDIUM: 'bg-yellow-400',
-    LOW: 'bg-blue-500',
+const alertTrendChartData = computed(() => ({
+  labels: trends.value.alert_trend.map(p => p.date),
+  datasets: [
+    {
+      label: '告警数',
+      data: trends.value.alert_trend.map(p => p.count),
+      borderColor: CHART_COLORS.primary,
+      backgroundColor: CHART_COLORS.primaryAlpha,
+      fill: true,
+      tension: 0.4,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+    },
+    ...(trends.value.high_alert_trend?.length ? [{
+      label: '高危告警',
+      data: trends.value.high_alert_trend.map(p => p.count),
+      borderColor: CHART_COLORS.high,
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: 0.4,
+      pointRadius: 3,
+      borderDash: [4, 4],
+    }] : []),
+  ],
+}))
+
+const levelPieColorMap: Record<string, string> = {
+  CRITICAL: CHART_COLORS.critical,
+  HIGH: CHART_COLORS.high,
+  MEDIUM: CHART_COLORS.medium,
+  LOW: CHART_COLORS.low,
+}
+const levelPieColor = (level: string) => levelPieColorMap[level] ?? CHART_COLORS.info
+
+const threatPieChartData = computed(() => {
+  const dist = defenseStats.value?.threat_level_dist ?? []
+  return {
+    labels: dist.map(d => d.level),
+    datasets: [{
+      data: dist.map(d => d.count),
+      backgroundColor: dist.map(d => levelPieColor(d.level)),
+      borderWidth: 0,
+      hoverOffset: 6,
+    }],
   }
-  return map[level] ?? 'bg-muted-foreground'
+})
+
+const serviceBarChartData = computed(() => {
+  const top = (defenseStats.value?.service_dist ?? []).slice(0, 8)
+  return {
+    labels: top.map(s => s.service),
+    datasets: [{
+      label: '攻击次数',
+      data: top.map(s => s.count),
+      backgroundColor: 'rgba(99, 102, 241, 0.7)',
+      borderColor: 'rgba(99, 102, 241, 1)',
+      borderWidth: 1,
+      borderRadius: 4,
+    }],
+  }
+})
+
+// ── 图表选项（暗色主题）──
+
+const baseChartFont = { family: 'Inter, sans-serif', size: 11 }
+const gridColor = 'rgba(255,255,255,0.06)'
+const tickColor = 'rgba(255,255,255,0.4)'
+
+const lineChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: true, labels: { color: tickColor, font: baseChartFont, boxWidth: 10, padding: 12 } },
+    tooltip: { mode: 'index' as const, intersect: false },
+  },
+  scales: {
+    x: { grid: { color: gridColor }, ticks: { color: tickColor, font: baseChartFont, maxRotation: 0 } },
+    y: { grid: { color: gridColor }, ticks: { color: tickColor, font: baseChartFont }, beginAtZero: true },
+  },
+}
+
+const doughnutOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  cutout: '65%',
+  plugins: {
+    legend: { display: false },
+    tooltip: { callbacks: { label: (ctx: any) => ` ${ctx.label}: ${ctx.parsed}` } },
+  },
+}
+
+const barChartOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  indexAxis: 'y' as const,
+  plugins: {
+    legend: { display: false },
+    tooltip: { mode: 'index' as const, intersect: false },
+  },
+  scales: {
+    x: { grid: { color: gridColor }, ticks: { color: tickColor, font: baseChartFont }, beginAtZero: true },
+    y: { grid: { color: 'transparent' }, ticks: { color: tickColor, font: baseChartFont } },
+  },
 }
 
 const scoreColor = (score: number | null | undefined) => {

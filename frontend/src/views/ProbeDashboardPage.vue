@@ -69,23 +69,21 @@
             <CardHeader class="pb-3">
               <CardTitle class="text-base">漏洞严重程度分布</CardTitle>
             </CardHeader>
-            <CardContent class="space-y-2">
-              <div v-if="loading" class="space-y-2">
-                <Skeleton v-for="i in 4" :key="i" class="h-8 w-full rounded" />
+            <CardContent>
+              <div v-if="loading" class="h-48 flex items-center justify-center">
+                <Skeleton class="size-36 rounded-full" />
               </div>
-              <div v-else>
-                <div
-                  v-for="s in severitySummary"
-                  :key="s.label"
-                  class="flex items-center justify-between rounded-md border border-border px-3 py-2"
-                >
-                  <div class="flex items-center gap-2">
-                    <Badge :class="s.color" class="text-xs w-16 justify-center">{{ s.label }}</Badge>
-                    <div class="h-2 rounded-full bg-muted overflow-hidden w-28">
-                      <div :class="s.barColor" class="h-full rounded-full transition-all" :style="{ width: s.pct + '%' }" />
-                    </div>
+              <div v-else-if="stats.totalFindings === 0" class="h-48 flex items-center justify-center text-muted-foreground text-sm">暂无漏洞数据</div>
+              <div v-else class="flex items-center gap-4">
+                <div class="h-48 flex-1 min-w-0">
+                  <Doughnut :data="severityChartData" :options="doughnutOptions" />
+                </div>
+                <div class="space-y-1.5 shrink-0 text-xs">
+                  <div v-for="s in severitySummary" :key="s.label" class="flex items-center gap-2">
+                    <span class="size-2.5 rounded-sm" :class="s.barColor"></span>
+                    <span class="text-muted-foreground">{{ s.label }}</span>
+                    <span class="font-semibold tabular-nums ml-auto pl-3">{{ s.count }}</span>
                   </div>
-                  <span class="text-sm font-semibold tabular-nums">{{ s.count }}</span>
                 </div>
               </div>
             </CardContent>
@@ -147,12 +145,16 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { Doughnut } from 'vue-chartjs'
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import { scanApi, type ScanTask, type ScanFinding } from '@/api/scan'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { RefreshCw, ExternalLink, Target, Shield, Bug, AlertTriangle } from 'lucide-vue-next'
+
+ChartJS.register(ArcElement, Tooltip, Legend)
 
 const loading = ref(false)
 const recentTasks = ref<ScanTask[]>([])
@@ -209,6 +211,27 @@ const severitySummary = computed(() => {
     { label: 'INFO', count: stats.value.infoFindings, color: 'bg-blue-500/15 text-blue-400 border-blue-500/30', barColor: 'bg-blue-500', pct: Math.round(stats.value.infoFindings / total * 100) },
   ]
 })
+
+// ── 漏洞饼图数据 ──
+const severityChartData = computed(() => ({
+  labels: severitySummary.value.map(s => s.label),
+  datasets: [{
+    data: severitySummary.value.map(s => s.count),
+    backgroundColor: ['rgba(239,68,68,0.8)', 'rgba(249,115,22,0.8)', 'rgba(234,179,8,0.8)', 'rgba(59,130,246,0.8)'],
+    borderWidth: 0,
+    hoverOffset: 6,
+  }],
+}))
+
+const doughnutOptions = {
+  responsive: true,
+  maintainAspectRatio: false,
+  cutout: '62%',
+  plugins: {
+    legend: { display: false },
+    tooltip: { callbacks: { label: (ctx: any) => ` ${ctx.label}: ${ctx.parsed}` } },
+  },
+}
 
 const chainStatus = computed(() => [
   { name: '任务调度器', ok: true, note: '' },

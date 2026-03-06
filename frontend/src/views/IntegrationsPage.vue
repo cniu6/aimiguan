@@ -173,6 +173,70 @@
               {{ nmapMsg }}
             </span>
           </div>
+
+          <!-- 漏洞检测规则 -->
+          <div class="pt-3 border-t border-border space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="space-y-0.5">
+                <p class="text-sm font-medium flex items-center gap-1.5">
+                  <Bug class="size-3.5 text-red-400" />
+                  漏洞检测脚本规则
+                </p>
+                <p class="text-xs text-muted-foreground">按系统标签配置 Nmap 漏洞检测脚本，系统自动识别主机 OS 后执行对应脚本</p>
+              </div>
+              <Button variant="outline" size="sm" class="cursor-pointer gap-1" @click="addVulnTag">
+                <Plus class="size-3.5" />
+                添加标签
+              </Button>
+            </div>
+
+            <!-- 标签规则列表 -->
+            <div class="space-y-2">
+              <div
+                v-for="(scripts, tag) in vulnScriptsMap"
+                :key="tag"
+                class="rounded-lg border border-border p-3 space-y-2 bg-muted/10"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <Badge variant="outline" class="text-xs font-mono">{{ tag }}</Badge>
+                    <span class="text-xs text-muted-foreground">{{ scripts.length }} 个脚本</span>
+                  </div>
+                  <button
+                    class="text-xs text-destructive/70 hover:text-destructive cursor-pointer"
+                    @click="removeVulnTag(tag)"
+                  >删除标签</button>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  <div
+                    v-for="(script, idx) in scripts"
+                    :key="idx"
+                    class="flex items-center gap-1 bg-muted/50 rounded px-2 py-0.5 text-xs font-mono"
+                  >
+                    <span>{{ script }}</span>
+                    <button class="text-muted-foreground hover:text-destructive cursor-pointer ml-1" @click="removeScript(tag, idx)">×</button>
+                  </div>
+                  <button
+                    class="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer border border-dashed border-border rounded px-2 py-0.5"
+                    @click="addScript(tag)"
+                  >
+                    <Plus class="size-3" /> 添加脚本
+                  </button>
+                </div>
+              </div>
+              <div v-if="Object.keys(vulnScriptsMap).length === 0" class="text-center py-4 text-xs text-muted-foreground border border-dashed border-border rounded-lg">
+                暂无规则，点击「添加标签」开始配置
+              </div>
+            </div>
+
+            <!-- 保存漏洞规则按钮 -->
+            <div class="flex items-center gap-2">
+              <Button size="sm" variant="outline" class="cursor-pointer" :disabled="nmapSaving" @click="saveVulnScripts">
+                保存漏洞规则
+              </Button>
+              <span v-if="vulnMsg" :class="vulnMsgOk ? 'text-emerald-400' : 'text-destructive'" class="text-xs">{{ vulnMsg }}</span>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -330,6 +394,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 
+const Radar = Zap
+
 // ── HFish 状态 ──
 const hfishConfig = ref<HFishConfig>({ host_port: null, sync_interval: 60, enabled: false })
 const hfishForm = reactive({ host_port: '', api_key: '', sync_interval: 60, enabled: false })
@@ -439,7 +505,83 @@ const saveNmapConfig = async () => {
   }
 }
 
-const Radar = Zap
+// ── 漏洞脚本规则 ──
+const vulnScriptsMap = ref<Record<string, string[]>>({})
+const vulnMsg = ref('')
+const vulnMsgOk = ref(true)
+
+const DEFAULT_VULN_SCRIPTS: Record<string, string[]> = {
+  linux: ['ftp-anon', 'ssh-vuln-openssh'],
+  win10: ['smb-vuln-ms17-010'],
+  win7: ['smb-vuln-ms17-010', 'smb-vuln-ms08-067'],
+  windows: ['smb-vuln-ms17-010', 'smb-vuln-ms08-067'],
+}
+
+const loadVulnScripts = async () => {
+  try {
+    const cfg = await scanApi.getNmapConfig()
+    const map = (cfg as any).vuln_scripts_by_tag
+    if (map && typeof map === 'object') {
+      vulnScriptsMap.value = JSON.parse(JSON.stringify(map))
+    } else {
+      vulnScriptsMap.value = JSON.parse(JSON.stringify(DEFAULT_VULN_SCRIPTS))
+    }
+  } catch {
+    vulnScriptsMap.value = JSON.parse(JSON.stringify(DEFAULT_VULN_SCRIPTS))
+  }
+}
+
+const addVulnTag = () => {
+  const tag = window.prompt('请输入系统标签（如 linux / win7 / ubuntu 等）')
+  if (tag?.trim() && !vulnScriptsMap.value[tag.trim()]) {
+    vulnScriptsMap.value[tag.trim()] = []
+  }
+}
+
+const removeVulnTag = (tag: string) => {
+  const map = { ...vulnScriptsMap.value }
+  delete map[tag]
+  vulnScriptsMap.value = map
+}
+
+const addScript = (tag: string) => {
+  const script = window.prompt('请输入 Nmap 漏洞脚本名（如 smb-vuln-ms17-010）')
+  if (script?.trim()) {
+    vulnScriptsMap.value = {
+      ...vulnScriptsMap.value,
+      [tag]: [...(vulnScriptsMap.value[tag] || []), script.trim()],
+    }
+  }
+}
+
+const removeScript = (tag: string, idx: number) => {
+  vulnScriptsMap.value = {
+    ...vulnScriptsMap.value,
+    [tag]: vulnScriptsMap.value[tag].filter((_, i) => i !== idx),
+  }
+}
+
+const saveVulnScripts = async () => {
+  nmapSaving.value = true
+  try {
+    const ipRanges = nmapIpRangesText.value.split('\n').map(s => s.trim()).filter(Boolean)
+    await scanApi.saveNmapConfig({
+      nmap_path: nmapForm.nmap_path.trim() || 'nmap',
+      ip_ranges: ipRanges.length ? ipRanges : nmapConfig.value.ip_ranges,
+      scan_interval: nmapForm.scan_interval,
+      enabled: nmapForm.enabled,
+      vuln_scripts_by_tag: vulnScriptsMap.value,
+    } as any)
+    vulnMsg.value = '漏洞规则已保存'
+    vulnMsgOk.value = true
+  } catch (e: any) {
+    vulnMsg.value = e?.response?.data?.detail || '保存失败'
+    vulnMsgOk.value = false
+  } finally {
+    nmapSaving.value = false
+    setTimeout(() => { vulnMsg.value = '' }, 3000)
+  }
+}
 
 // ── 推送通道 ──
 interface PushChannel {
@@ -531,5 +673,6 @@ onMounted(() => {
   loadHFishConfig()
   loadNmapConfig()
   loadChannels()
+  loadVulnScripts()
 })
 </script>

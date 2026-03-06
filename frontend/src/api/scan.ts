@@ -180,4 +180,119 @@ export const scanApi = {
     const res = await apiClient.get(`/scan/tasks/${taskId}/win7-hosts`)
     return res.data
   },
+
+  // ── Nmap 扫描主机结果 ──
+  async getNmapHosts(params?: {
+    scan_id?: number
+    state?: string
+    limit?: number
+    offset?: number
+  }): Promise<NmapHost[]> {
+    const res = await apiClient.get('/scan/nmap/hosts', { params })
+    return Array.isArray(res.data) ? res.data : (res.data?.items ?? [])
+  },
+
+  async getNmapScans(): Promise<NmapScan[]> {
+    const res = await apiClient.get('/scan/nmap/scans')
+    return Array.isArray(res.data) ? res.data : (res.data?.items ?? [])
+  },
+
+  async getNmapStats(): Promise<NmapStats> {
+    const res = await apiClient.get('/scan/nmap/stats')
+    return res.data
+  },
+
+  async getNmapHostByIp(ip: string, scan_id?: number): Promise<NmapHost | null> {
+    const res = await apiClient.get(`/scan/nmap/host/${ip}`, { params: scan_id ? { scan_id } : {} })
+    return res.data ?? null
+  },
+
+  // ── Nmap 自动发现资产 ──
+  async getDiscoveredAssets(params?: {
+    mac?: string
+    ip?: string
+    limit?: number
+    offset?: number
+  }): Promise<DiscoveredAsset[]> {
+    const res = await apiClient.get('/scan/nmap/assets', { params })
+    return Array.isArray(res.data) ? res.data : (res.data?.items ?? [])
+  },
+
+  async getAssetIpHistory(assetId: number): Promise<AssetIpHistory[]> {
+    const res = await apiClient.get(`/scan/nmap/assets/${assetId}/ips`)
+    return Array.isArray(res.data) ? res.data : []
+  },
+
+  // ── 漏洞统计 ──
+  async getVulnStats(): Promise<VulnStats> {
+    const res = await apiClient.get('/scan/nmap/vuln/stats')
+    return res.data
+  },
+
+  async triggerVulnScan(): Promise<{ success: boolean; message: string }> {
+    const res = await apiClient.post('/scan/nmap/vuln/scan')
+    return res.data
+  },
+}
+
+// ── 新增类型定义 ──
+
+export interface NmapHost {
+  id: number
+  scan_id: number
+  ip: string
+  mac_address: string | null
+  vendor: string | null
+  hostname: string | null
+  state: string
+  os_type: string | null
+  os_accuracy: string | null
+  os_tags: string | null
+  open_ports: string[] | number[]
+  services: { port: string | number; service: string; product?: string; version?: string }[]
+  scan_time: string
+  last_seen: string
+}
+
+export interface NmapScan {
+  id: number
+  scan_time: string
+  ip_ranges: string
+  arguments: string
+  hosts_count: number
+}
+
+export interface NmapStats {
+  total: number
+  state_stats: { state: string; count: number }[]
+  vendor_stats: { vendor: string; count: number }[]
+}
+
+export interface DiscoveredAsset {
+  id: number
+  mac_address: string | null
+  current_ip: string
+  hostname: string | null
+  vendor: string | null
+  state: string
+  os_type: string | null
+  os_tags: string | null
+  first_seen: string
+  last_seen: string
+  last_scan_id: number | null
+}
+
+export interface AssetIpHistory {
+  id: number
+  asset_id: number
+  ip: string
+  scan_id: number | null
+  seen_time: string
+}
+
+export interface VulnStats {
+  vulnerable: number
+  safe: number
+  vulnerable_devices: number
+  error: number
 }
