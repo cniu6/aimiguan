@@ -211,91 +211,12 @@
     </Tabs>
 
     <!-- IP 关联查询弹窗 -->
-    <div
-      v-if="ipInfoOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      @click.self="ipInfoOpen = false"
-    >
-      <div class="mx-4 w-full max-w-lg rounded-xl border border-border bg-background shadow-2xl">
-        <div class="flex items-center justify-between border-b border-border px-5 py-4">
-          <div class="flex items-center gap-2">
-            <Monitor class="size-4 text-primary" />
-            <span class="font-semibold text-sm">IP 扫描详情</span>
-            <code class="text-xs text-muted-foreground ml-1">{{ currentIp }}</code>
-          </div>
-          <button class="text-muted-foreground hover:text-foreground transition-colors" @click="ipInfoOpen = false">
-            <X class="size-4" />
-          </button>
-        </div>
-        <div class="p-5 space-y-4">
-          <div v-if="ipInfoLoading" class="space-y-3">
-            <Skeleton v-for="i in 4" :key="i" class="h-8 w-full rounded" />
-          </div>
-          <div v-else-if="!ipInfo" class="py-8 text-center">
-            <Monitor class="size-10 text-muted-foreground/30 mx-auto mb-3" />
-            <p class="text-sm text-muted-foreground">未找到该 IP 的 Nmap 扫描记录</p>
-            <p class="text-xs text-muted-foreground mt-1">请先在「探测扫描」中对该 IP 范围执行扫描</p>
-          </div>
-          <template v-else>
-            <div class="grid grid-cols-2 gap-3 text-sm">
-              <div class="rounded-lg border border-border px-3 py-2.5 space-y-0.5">
-                <p class="text-xs text-muted-foreground">操作系统</p>
-                <p class="font-medium">{{ ipInfo.os_type || '未识别' }}</p>
-                <p v-if="ipInfo.os_accuracy" class="text-xs text-muted-foreground">精确度 {{ ipInfo.os_accuracy }}%</p>
-              </div>
-              <div class="rounded-lg border border-border px-3 py-2.5 space-y-0.5">
-                <p class="text-xs text-muted-foreground">主机名 / 厂商</p>
-                <p class="font-medium">{{ ipInfo.hostname || '—' }}</p>
-                <p class="text-xs text-muted-foreground">{{ ipInfo.vendor || '未知厂商' }}</p>
-              </div>
-              <div class="rounded-lg border border-border px-3 py-2.5 space-y-0.5">
-                <p class="text-xs text-muted-foreground">MAC 地址</p>
-                <code class="text-xs">{{ ipInfo.mac_address || '—' }}</code>
-              </div>
-              <div class="rounded-lg border border-border px-3 py-2.5 space-y-0.5">
-                <p class="text-xs text-muted-foreground">开放端口数</p>
-                <p class="font-semibold text-primary">{{ ipInfo.open_ports?.length ?? 0 }}</p>
-              </div>
-            </div>
-            <div v-if="ipInfo.services?.length" class="space-y-1.5">
-              <p class="text-xs font-medium text-muted-foreground">开放服务</p>
-              <div class="rounded-lg border border-border overflow-hidden">
-                <table class="w-full text-xs">
-                  <thead>
-                    <tr class="bg-muted/40 border-b border-border">
-                      <th class="px-3 py-1.5 text-left text-muted-foreground font-medium">端口</th>
-                      <th class="px-3 py-1.5 text-left text-muted-foreground font-medium">协议</th>
-                      <th class="px-3 py-1.5 text-left text-muted-foreground font-medium">服务</th>
-                      <th class="px-3 py-1.5 text-left text-muted-foreground font-medium">版本</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="svc in ipInfo.services"
-                      :key="svc.port"
-                      class="border-b border-border/50 hover:bg-muted/20"
-                    >
-                      <td class="px-3 py-1.5 font-mono font-semibold">{{ svc.port }}</td>
-                      <td class="px-3 py-1.5 text-muted-foreground">{{ svc.protocol }}</td>
-                      <td class="px-3 py-1.5">{{ svc.service || '—' }}</td>
-                      <td class="px-3 py-1.5 text-muted-foreground truncate max-w-[120px]">
-                        {{ [svc.product, svc.version].filter(Boolean).join(' ') || '—' }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div v-else-if="ipInfo.open_ports?.length" class="text-xs text-muted-foreground">
-              开放端口: {{ ipInfo.open_ports.join(', ') }}
-            </div>
-            <p class="text-xs text-muted-foreground text-right">
-              扫描时间: {{ formatTime(ipInfo.scanned_at) }}
-            </p>
-          </template>
-        </div>
-      </div>
-    </div>
+    <NmapHostDetailDialog
+      v-model:open="ipInfoOpen"
+      :ip="currentIp"
+      :host="ipInfo"
+      :loading="ipInfoLoading"
+    />
   </div>
 </template>
 
@@ -309,6 +230,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Activity, Monitor, RefreshCw, Search, ShieldAlert, ShieldCheck, X } from 'lucide-vue-next'
+import NmapHostDetailDialog from '@/components/NmapHostDetailDialog.vue'
 
 interface ThreatEvent {
   id: number; ip: string; source: string; ai_score: number; ai_reason: string; status: string; created_at: string
@@ -368,22 +290,20 @@ const loadLogs = async (offset = 0) => {
   logLoading.value = true
   logOffset.value = offset
   try {
-    const data = await defenseApi.getHFishLogs({
+    const result = await defenseApi.getHFishLogs({
       limit: LOG_LIMIT,
       offset,
       threat_level: logThreatFilter.value || undefined,
       service_name: logServiceFilter.value || undefined,
     })
-    logs.value = data
-    // 若首次加载成功，尝试获取统计（用于获取服务列表）
+    logs.value = result.items
+    logTotal.value = result.total
+    // 首次加载时拉取服务下拉选项
     if (offset === 0 && !serviceOptions.value.length) {
       try {
         const stats = await defenseApi.getHFishStats()
         serviceOptions.value = (stats.service_stats ?? []).map((s: any) => s.name).filter(Boolean)
-        logTotal.value = stats.total
-      } catch {
-        logTotal.value = data.length
-      }
+      } catch { /* ignore */ }
     }
   } catch (e) {
     console.error(e)

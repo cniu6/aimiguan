@@ -331,7 +331,7 @@
               <div class="flex items-center justify-between">
                 <div>
                   <p class="text-xs text-muted-foreground">存在漏洞</p>
-                  <p class="text-2xl font-bold text-red-400 mt-0.5">{{ vulnStats?.vulnerable ?? '—' }}</p>
+                  <p class="text-2xl font-bold text-red-400 mt-0.5">{{ vulnStats != null ? (vulnStats.high ?? 0) + (vulnStats.medium ?? 0) + (vulnStats.low ?? 0) : '—' }}</p>
                 </div>
                 <AlertTriangle class="size-6 text-red-400/50" />
               </div>
@@ -342,7 +342,7 @@
               <div class="flex items-center justify-between">
                 <div>
                   <p class="text-xs text-muted-foreground">已确认安全</p>
-                  <p class="text-2xl font-bold text-emerald-400 mt-0.5">{{ vulnStats?.safe ?? '—' }}</p>
+                  <p class="text-2xl font-bold text-emerald-400 mt-0.5">{{ vulnStats?.confirmed ?? '—' }}</p>
                 </div>
                 <ShieldCheck class="size-6 text-emerald-400/50" />
               </div>
@@ -353,7 +353,7 @@
               <div class="flex items-center justify-between">
                 <div>
                   <p class="text-xs text-muted-foreground">受影响设备</p>
-                  <p class="text-2xl font-bold text-amber-400 mt-0.5">{{ vulnStats?.vulnerable_devices ?? '—' }}</p>
+                  <p class="text-2xl font-bold text-amber-400 mt-0.5">{{ vulnStats?.affected_assets ?? '—' }}</p>
                 </div>
                 <Monitor class="size-6 text-amber-400/50" />
               </div>
@@ -364,7 +364,7 @@
               <div class="flex items-center justify-between">
                 <div>
                   <p class="text-xs text-muted-foreground">扫描失败</p>
-                  <p class="text-2xl font-bold text-muted-foreground mt-0.5">{{ vulnStats?.error ?? '—' }}</p>
+                  <p class="text-2xl font-bold text-muted-foreground mt-0.5">{{ vulnStats?.false_positive ?? '—' }}</p>
                 </div>
                 <AlertTriangle class="size-6 text-muted-foreground/40" />
               </div>
@@ -500,7 +500,7 @@
           >
             <option value="">最新扫描</option>
             <option v-for="scan in nmapScans" :key="scan.id" :value="scan.id">
-              #{{ scan.id }} - {{ scan.scan_time }} ({{ scan.hosts_count }} 台)
+              #{{ scan.id }} - {{ scan.target }} [{{ scan.state }}] {{ scan.created_at?.slice(0, 10) ?? '' }}
             </option>
           </select>
 
@@ -535,10 +535,22 @@
 
         <!-- Nmap 统计 -->
         <div v-if="nmapStats" class="grid gap-3 md:grid-cols-3">
-          <Card v-for="s in nmapStats.state_stats" :key="s.state">
+          <Card class="border-emerald-500/20">
             <CardContent class="pt-3 pb-3">
-              <p class="text-xs text-muted-foreground">{{ s.state === 'up' ? '在线主机' : '离线主机' }}</p>
-              <p class="text-xl font-bold mt-0.5" :class="s.state === 'up' ? 'text-emerald-400' : 'text-muted-foreground'">{{ s.count }}</p>
+              <p class="text-xs text-muted-foreground">在线主机</p>
+              <p class="text-xl font-bold mt-0.5 text-emerald-400">{{ nmapStats.online }}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent class="pt-3 pb-3">
+              <p class="text-xs text-muted-foreground">离线主机</p>
+              <p class="text-xl font-bold mt-0.5 text-muted-foreground">{{ nmapStats.offline }}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent class="pt-3 pb-3">
+              <p class="text-xs text-muted-foreground">已发现主机</p>
+              <p class="text-xl font-bold mt-0.5">{{ nmapStats.total }}</p>
             </CardContent>
           </Card>
         </div>
@@ -580,14 +592,7 @@
                   <p v-if="host.os_accuracy" class="text-muted-foreground">精确度 {{ host.os_accuracy }}%</p>
                 </td>
                 <td class="px-4 py-2.5">
-                  <div class="flex flex-wrap gap-1">
-                    <Badge
-                      v-for="tag in (host.os_tags || '').split(',').filter(Boolean)"
-                      :key="tag"
-                      variant="outline"
-                      class="text-xs h-5 px-1"
-                    >{{ tag }}</Badge>
-                  </div>
+                  <span class="text-xs text-muted-foreground">—</span>
                 </td>
                 <td class="px-4 py-2.5">
                   <Badge :class="host.state === 'up' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-muted text-muted-foreground'">
@@ -625,84 +630,12 @@
     </Tabs>
 
     <!-- Nmap 主机详情弹窗 -->
-    <div
-      v-if="nmapHostDetailOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      @click.self="nmapHostDetailOpen = false"
-    >
-      <div class="mx-4 w-full max-w-xl rounded-xl border border-border bg-background shadow-2xl max-h-[80vh] flex flex-col">
-        <div class="flex items-center justify-between border-b border-border px-5 py-4 shrink-0">
-          <div class="flex items-center gap-2">
-            <Monitor class="size-4 text-primary" />
-            <span class="font-semibold text-sm">主机详情</span>
-            <code class="text-xs text-muted-foreground ml-1">{{ selectedNmapHost?.ip }}</code>
-          </div>
-          <button class="text-muted-foreground hover:text-foreground transition-colors" @click="nmapHostDetailOpen = false">
-            <X class="size-4" />
-          </button>
-        </div>
-        <div v-if="selectedNmapHost" class="p-5 space-y-4 overflow-y-auto">
-          <div class="grid grid-cols-2 gap-3 text-sm">
-            <div class="rounded-lg border border-border px-3 py-2.5 space-y-0.5">
-              <p class="text-xs text-muted-foreground">操作系统</p>
-              <p class="font-medium text-sm">{{ selectedNmapHost.os_type || '未识别' }}</p>
-              <p v-if="selectedNmapHost.os_accuracy" class="text-xs text-muted-foreground">精确度 {{ selectedNmapHost.os_accuracy }}%</p>
-            </div>
-            <div class="rounded-lg border border-border px-3 py-2.5 space-y-0.5">
-              <p class="text-xs text-muted-foreground">主机名 / 厂商</p>
-              <p class="font-medium text-sm">{{ selectedNmapHost.hostname || '—' }}</p>
-              <p class="text-xs text-muted-foreground">{{ selectedNmapHost.vendor || '未知厂商' }}</p>
-            </div>
-            <div class="rounded-lg border border-border px-3 py-2.5 space-y-0.5">
-              <p class="text-xs text-muted-foreground">MAC 地址</p>
-              <code class="text-xs">{{ selectedNmapHost.mac_address || '—' }}</code>
-            </div>
-            <div class="rounded-lg border border-border px-3 py-2.5 space-y-0.5">
-              <p class="text-xs text-muted-foreground">开放端口数</p>
-              <p class="font-semibold text-primary">{{ Array.isArray(selectedNmapHost.open_ports) ? selectedNmapHost.open_ports.length : 0 }}</p>
-            </div>
-          </div>
-
-          <!-- OS 标签 -->
-          <div v-if="selectedNmapHost.os_tags" class="space-y-1.5">
-            <p class="text-xs font-medium text-muted-foreground">系统标签</p>
-            <div class="flex flex-wrap gap-1">
-              <Badge
-                v-for="tag in selectedNmapHost.os_tags.split(',').filter(Boolean)"
-                :key="tag"
-                variant="outline"
-                class="text-xs"
-              >{{ tag }}</Badge>
-            </div>
-          </div>
-
-          <!-- 开放服务 -->
-          <div v-if="selectedNmapHost.services?.length" class="space-y-1.5">
-            <p class="text-xs font-medium text-muted-foreground">开放服务（{{ selectedNmapHost.services.length }} 个）</p>
-            <div class="rounded-lg border border-border overflow-hidden">
-              <table class="w-full text-xs">
-                <thead>
-                  <tr class="bg-muted/40 border-b border-border">
-                    <th class="px-3 py-1.5 text-left text-muted-foreground font-medium">端口</th>
-                    <th class="px-3 py-1.5 text-left text-muted-foreground font-medium">服务</th>
-                    <th class="px-3 py-1.5 text-left text-muted-foreground font-medium">产品/版本</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="svc in selectedNmapHost.services" :key="svc.port" class="border-b border-border/50">
-                    <td class="px-3 py-1.5 font-mono font-semibold">{{ svc.port }}</td>
-                    <td class="px-3 py-1.5">{{ svc.service || '—' }}</td>
-                    <td class="px-3 py-1.5 text-muted-foreground">{{ [svc.product, svc.version].filter(Boolean).join(' ') || '—' }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <p class="text-xs text-muted-foreground text-right">扫描时间: {{ selectedNmapHost.scan_time }}</p>
-        </div>
-      </div>
-    </div>
+    <NmapHostDetailDialog
+      v-model:open="nmapHostDetailOpen"
+      :ip="selectedNmapHost?.ip"
+      :host="selectedNmapHost"
+      title="主机详情"
+    />
 
     <!-- Task Detail Dialog -->
     <Dialog v-model:open="showTaskDetail">
@@ -818,6 +751,7 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Monitor, Plus, RefreshCw, Scan, Search, Shield, ShieldCheck, Target, Trash2, Bug, X } from 'lucide-vue-next'
+import NmapHostDetailDialog from '@/components/NmapHostDetailDialog.vue'
 
 // ===== Active Tab =====
 const activeTab = ref('assets')
@@ -1130,14 +1064,14 @@ const loadNmapHosts = async (offset = 0) => {
   nmapHostLoading.value = true
   nmapHostOffset.value = offset
   try {
-    const hosts = await scanApi.getNmapHosts({
+    const result = await scanApi.getNmapHosts({
       scan_id: selectedScanId.value || undefined,
       state: nmapStateFilter.value || undefined,
       limit: NMAP_LIMIT,
       offset,
     })
-    nmapHosts.value = hosts
-    nmapHostTotal.value = hosts.length < NMAP_LIMIT ? offset + hosts.length : offset + NMAP_LIMIT + 1
+    nmapHosts.value = result.items
+    nmapHostTotal.value = result.total
   } catch (e) { console.error(e) } finally { nmapHostLoading.value = false }
 }
 

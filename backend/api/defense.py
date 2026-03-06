@@ -1127,6 +1127,125 @@ async def trigger_hfish_sync(
 
 # ── IP 关联查询：通过攻击 IP 查询 Nmap 扫描结果 ──
 
+# ── HFish 攻击日志查询 ──
+
+@router.get("/hfish/logs")
+async def get_hfish_logs(
+    limit: int = 50,
+    offset: int = 0,
+    threat_level: Optional[str] = None,
+    service_name: Optional[str] = None,
+    current_user: User = Depends(require_permissions("view_events")),
+    db: Session = Depends(get_db),
+):
+    """分页查询 HFish 攻击日志（来源：ThreatEvent.source='hfish'）"""
+    from sqlalchemy import func as sqlfunc
+
+    query = db.query(ThreatEvent).filter(ThreatEvent.source == "hfish")
+
+    if threat_level:
+        query = query.filter(ThreatEvent.threat_label == threat_level)
+    if service_name:
+        query = query.filter(ThreatEvent.service_name == service_name)
+
+    total = query.count()
+    limit = min(limit, 200)
+    items = query.order_by(ThreatEvent.created_at.desc()).offset(offset).limit(limit).all()
+
+    def _to_dict(e: ThreatEvent) -> Dict[str, Any]:
+        ts = e.created_at.timestamp() if e.created_at else 0
+        return {
+            "id": e.id,
+            "attack_ip": e.ip,
+            "ip_location": e.ip_location or "",
+            "client_id": e.client_id or "",
+            "client_name": e.client_name or "",
+            "service_name": e.service_name or "",
+            "service_port": e.service_port or "",
+            "threat_level": e.threat_label or "",
+            "create_time_str": e.created_at.strftime("%Y-%m-%d %H:%M:%S") if e.created_at else "",
+            "create_time_timestamp": int(ts),
+        }
+
+    return {"code": 0, "data": {"total": total, "items": [_to_dict(e) for e in items]}}
+
+
+@router.get("/hfish/stats")
+async def get_hfish_stats(
+    days: int = 7,
+    current_user: User = Depends(require_permissions("view_events")),
+    db: Session = Depends(get_db),
+):
+    """HFish 攻击统计：威胁等级分布 / 服务分布 / TOP IP / 近N天趋势"""
+    from sqlalchemy import func as sqlfunc
+    from datetime import timedelta
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    base = db.query(ThreatEvent).filter(
+        ThreatEvent.source == "hfish",
+        ThreatEvent.created_at >= since,
+    )
+
+    total = base.count()
+
+    # 威胁等级分布
+    threat_rows = (
+        db.query(ThreatEvent.threat_label, sqlfunc.count(ThreatEvent.id).label("cnt"))
+        .filter(ThreatEvent.source == "hfish", ThreatEvent.created_at >= since)
+        .group_by(ThreatEvent.threat_label)
+        .all()
+    )
+    threat_stats = [{"level": r.threat_label or "未知", "count": r.cnt} for r in threat_rows]
+
+    # 服务分布 TOP 10
+    svc_rows = (
+        db.query(ThreatEvent.service_name, sqlfunc.count(ThreatEvent.id).label("cnt"))
+        .filter(ThreatEvent.source == "hfish", ThreatEvent.created_at >= since, ThreatEvent.service_name.isnot(None))
+        .group_by(ThreatEvent.service_name)
+        .order_by(sqlfunc.count(ThreatEvent.id).desc())
+        .limit(10)
+        .all()
+    )
+    service_stats = [{"name": r.service_name or "unknown", "count": r.cnt} for r in svc_rows]
+
+    # TOP IP
+    ip_rows = (
+        db.query(ThreatEvent.ip, sqlfunc.count(ThreatEvent.id).label("cnt"))
+        .filter(ThreatEvent.source == "hfish", ThreatEvent.created_at >= since)
+        .group_by(ThreatEvent.ip)
+        .order_by(sqlfunc.count(ThreatEvent.id).desc())
+        .limit(10)
+        .all()
+    )
+    ip_stats = [{"ip": r.ip, "count": r.cnt} for r in ip_rows]
+
+    # 近N天趋势（按日期分组）
+    time_rows = (
+        db.query(
+            sqlfunc.strftime("%Y-%m-%d", ThreatEvent.created_at).label("date"),
+            sqlfunc.count(ThreatEvent.id).label("cnt"),
+        )
+        .filter(ThreatEvent.source == "hfish", ThreatEvent.created_at >= since)
+        .group_by(sqlfunc.strftime("%Y-%m-%d", ThreatEvent.created_at))
+        .order_by(sqlfunc.strftime("%Y-%m-%d", ThreatEvent.created_at))
+        .all()
+    )
+    time_stats = [{"date": r.date, "count": r.cnt} for r in time_rows]
+
+    return {
+        "code": 0,
+        "data": {
+            "total": total,
+            "threat_stats": threat_stats,
+            "service_stats": service_stats,
+            "ip_stats": ip_stats,
+            "time_stats": time_stats,
+        },
+    }
+
+
+# ── IP 关联查询：通过攻击 IP 查询 Nmap 扫描结果 ──
+
 @router.get("/ip-info/{ip}")
 @compat_router.get("/ip-info/{ip}", include_in_schema=False)
 async def get_ip_scan_info(

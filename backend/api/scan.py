@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
+from sqlalchemy import func as sqlfunc
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 import ipaddress
+import json
 import re
 import time
 
@@ -903,3 +905,238 @@ async def get_win7_hosts(
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+
+
+# ===== Nmap 主机查询 =====
+
+
+def _iso_z(dt: Optional[datetime]) -> Optional[str]:
+    if dt is None:
+        return None
+    from datetime import timezone
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _finding_to_host(f: ScanFinding) -> Dict[str, Any]:
+    """将 ScanFinding 记录（主机发现）转成前端 NmapHost 格式"""
+    try:
+        evidence = json.loads(f.evidence) if f.evidence else {}
+    except Exception:
+        evidence = {}
+    return {
+        "id": f.id,
+        "scan_task_id": f.scan_task_id,
+        "ip": f.asset,
+        "mac_address": f.mac_address or "",
+        "vendor": f.vendor or "",
+        "hostname": f.hostname or "",
+        "state": f.state or "up",
+        "os_type": f.os_type or "",
+        "os_accuracy": f.os_accuracy or "",
+        "open_ports": evidence.get("open_ports", []),
+        "services": evidence.get("services", []),
+        "scanned_at": _iso_z(f.created_at),
+    }
+
+
+@router.get("/nmap/hosts")
+async def get_nmap_hosts(
+    scan_id: Optional[int] = None,
+    state: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """查询 Nmap 主机发现结果（ScanFinding 中 state 不为空的记录）"""
+    query = db.query(ScanFinding).filter(ScanFinding.state.isnot(None))
+
+    if scan_id:
+        query = query.filter(ScanFinding.scan_task_id == scan_id)
+    if state:
+        query = query.filter(ScanFinding.state == state)
+
+    total = query.count()
+    limit = min(limit, 200)
+    items = query.order_by(ScanFinding.created_at.desc()).offset(offset).limit(limit).all()
+
+    return APIResponse.success({
+        "total": total,
+        "items": [_finding_to_host(f) for f in items],
+    })
+
+
+@router.get("/nmap/scans")
+async def get_nmap_scans(
+    current_user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """查询 Nmap 扫描任务历史列表"""
+    tasks = (
+        db.query(ScanTask)
+        .filter(ScanTask.tool_name == "nmap")
+        .order_by(ScanTask.created_at.desc())
+        .limit(100)
+        .all()
+    )
+
+    def _task_dict(t: ScanTask) -> Dict[str, Any]:
+        return {
+            "id": t.id,
+            "target": t.target,
+            "profile": t.profile,
+            "state": t.state,
+            "started_at": _iso_z(t.started_at),
+            "ended_at": _iso_z(t.ended_at),
+            "created_at": _iso_z(t.created_at),
+        }
+
+    return APIResponse.success({"items": [_task_dict(t) for t in tasks]})
+
+
+@router.get("/nmap/stats")
+async def get_nmap_stats(
+    scan_id: Optional[int] = None,
+    current_user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Nmap 主机统计：在线/离线数量、OS 分布、厂商 TOP"""
+    base = db.query(ScanFinding).filter(ScanFinding.state.isnot(None))
+    if scan_id:
+        base = base.filter(ScanFinding.scan_task_id == scan_id)
+
+    total = base.count()
+    online = base.filter(ScanFinding.state == "up").count()
+    offline = base.filter(ScanFinding.state == "down").count()
+
+    os_rows = (
+        db.query(ScanFinding.os_type, sqlfunc.count(ScanFinding.id).label("cnt"))
+        .filter(ScanFinding.state.isnot(None), ScanFinding.os_type.isnot(None), ScanFinding.os_type != "")
+        .group_by(ScanFinding.os_type)
+        .order_by(sqlfunc.count(ScanFinding.id).desc())
+        .limit(10)
+        .all()
+    )
+    if scan_id:
+        os_rows = (
+            db.query(ScanFinding.os_type, sqlfunc.count(ScanFinding.id).label("cnt"))
+            .filter(ScanFinding.scan_task_id == scan_id, ScanFinding.state.isnot(None), ScanFinding.os_type.isnot(None), ScanFinding.os_type != "")
+            .group_by(ScanFinding.os_type)
+            .order_by(sqlfunc.count(ScanFinding.id).desc())
+            .limit(10)
+            .all()
+        )
+
+    return APIResponse.success({
+        "total": total,
+        "online": online,
+        "offline": offline,
+        "os_dist": [{"os": r.os_type, "count": r.cnt} for r in os_rows],
+    })
+
+
+@router.get("/nmap/host/{ip}")
+async def get_nmap_host_by_ip(
+    ip: str,
+    scan_id: Optional[int] = None,
+    current_user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """通过 IP 查询最新一次 Nmap 主机详情"""
+    query = db.query(ScanFinding).filter(
+        ScanFinding.asset == ip,
+        ScanFinding.state.isnot(None),
+    )
+    if scan_id:
+        query = query.filter(ScanFinding.scan_task_id == scan_id)
+
+    finding = query.order_by(ScanFinding.created_at.desc()).first()
+    if not finding:
+        raise HTTPException(status_code=404, detail=f"未找到 IP={ip} 的 Nmap 记录")
+
+    return APIResponse.success(_finding_to_host(finding))
+
+
+# ===== 漏洞统计与触发 =====
+
+
+@router.get("/nmap/vuln/stats")
+async def get_vuln_stats(
+    current_user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    漏洞统计：从 ScanFinding 中汇总高/中/低危数量和受影响设备数
+    漏洞记录特征：severity 不为空且非 'INFO'，state 为空（非主机发现记录）
+    """
+    vuln_base = db.query(ScanFinding).filter(
+        ScanFinding.severity.isnot(None),
+        ScanFinding.severity != "INFO",
+        ScanFinding.state.is_(None),
+    )
+
+    total = vuln_base.count()
+    high = vuln_base.filter(ScanFinding.severity == "HIGH").count()
+    medium = vuln_base.filter(ScanFinding.severity == "MEDIUM").count()
+    low = vuln_base.filter(ScanFinding.severity == "LOW").count()
+    confirmed = vuln_base.filter(ScanFinding.status == "CONFIRMED").count()
+    failed = vuln_base.filter(ScanFinding.status == "FALSE_POSITIVE").count()
+
+    # 受影响设备（唯一 IP）
+    affected = db.query(sqlfunc.count(sqlfunc.distinct(ScanFinding.asset))).filter(
+        ScanFinding.severity.isnot(None),
+        ScanFinding.severity != "INFO",
+        ScanFinding.state.is_(None),
+        ScanFinding.severity.in_(["HIGH", "MEDIUM", "LOW"]),
+    ).scalar() or 0
+
+    return APIResponse.success({
+        "total": total,
+        "high": high,
+        "medium": medium,
+        "low": low,
+        "confirmed": confirmed,
+        "false_positive": failed,
+        "affected_assets": affected,
+    })
+
+
+@router.post("/nmap/vuln/scan")
+async def trigger_vuln_scan(
+    current_user: object = Depends(require_role("operator")),
+    db: Session = Depends(get_db),
+):
+    """手动触发全网漏洞扫描（使用已配置的 IP 范围，profile=vuln）"""
+    from services.nmap_scanner import nmap_scanner
+    import uuid
+
+    nmap_scanner._ensure_config_loaded()
+
+    if not nmap_scanner.enabled:
+        raise HTTPException(status_code=400, detail="Nmap 扫描器未启用，请先在集成设置中配置")
+
+    if not nmap_scanner.ip_ranges:
+        raise HTTPException(status_code=400, detail="未配置扫描 IP 范围")
+
+    trace_id = f"vuln_scan_{uuid.uuid4().hex[:8]}"
+    targets = nmap_scanner.ip_ranges
+
+    async def _do_scan():
+        for target in targets:
+            try:
+                await nmap_scanner.scan_target(
+                    target=target,
+                    profile="vuln",
+                    db=db,
+                    trace_id=trace_id,
+                )
+            except Exception as e:
+                pass  # 继续扫描其他目标
+
+    import asyncio
+    asyncio.create_task(_do_scan())
+
+    return APIResponse.success(
+        data={"trace_id": trace_id, "targets": targets},
+        message=f"漏洞扫描已启动，共 {len(targets)} 个目标"
+    )

@@ -86,13 +86,17 @@ export const defenseApi = {
     offset?: number
     threat_level?: string
     service_name?: string
-  }): Promise<HFishLog[]> {
+  }): Promise<{ total: number; items: HFishLog[] }> {
     const res = await apiClient.get('/defense/hfish/logs', { params })
-    return Array.isArray(res.data) ? res.data : (res.data?.items ?? [])
+    // 后端返回 { code:0, data: { total, items } }
+    const d = res?.data ?? res
+    if (d?.total !== undefined) return d
+    if (Array.isArray(d)) return { total: d.length, items: d }
+    return { total: 0, items: [] }
   },
 
   async getHFishStats(): Promise<HFishStats> {
     const res = await apiClient.get('/defense/hfish/stats')
-    return res.data
+    return res?.data ?? res
   },
 }
