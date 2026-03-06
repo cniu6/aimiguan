@@ -25,6 +25,15 @@
               </div>
             </div>
 
+            <ModuleFeedbackCard
+              v-if="overviewIssues.length"
+              title="部分模块同步失败"
+              description="当前页面已经保留可用模块，其余区块可单独重试或展开日志排查接口失败原因。"
+              :error="`异常模块：${overviewIssues.map(item => item.label).join('、')}`"
+              :logs="overviewIssues.flatMap(item => item.logs)"
+              @retry="loadAll"
+            />
+
             <div class="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
               <div class="ops-panel">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -109,7 +118,16 @@
       </section>
 
       <section class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
-        <Card v-for="card in narrativeCards" :key="card.label" class="ops-metric-card">
+        <ModuleFeedbackCard
+          v-if="overviewFeedback.metrics.error"
+          class="lg:col-span-2 2xl:col-span-4"
+          title="关键指标暂时不可用"
+          description="核心 KPI 没有完成同步，当前不展示旧指标，避免把值班判断建立在过期数据上。"
+          :error="overviewFeedback.metrics.error"
+          :logs="overviewFeedback.metrics.logs"
+          @retry="loadAll"
+        />
+        <Card v-for="card in narrativeCards" v-else :key="card.label" class="ops-metric-card">
           <div class="ops-metric-top">
             <div>
               <p class="ops-metric-label">{{ card.label }}</p>
@@ -158,6 +176,14 @@
             <div v-if="loading" class="ops-empty">
               <Skeleton class="h-44 w-full rounded-xl" />
             </div>
+            <ModuleFeedbackCard
+              v-else-if="overviewFeedback.trends.error"
+              title="趋势模块同步失败"
+              description="趋势数据没有返回，暂时无法判断当前压力是在抬升还是回落。"
+              :error="overviewFeedback.trends.error"
+              :logs="overviewFeedback.trends.logs"
+              @retry="loadAll"
+            />
             <div v-else-if="!trends.alert_trend.length" class="ops-empty">
               <p class="ops-empty-title">暂无走势数据</p>
               <p class="ops-empty-copy">等到有告警进入系统后，这里会显示整体压力变化和高危告警的同步走势。</p>
@@ -174,6 +200,15 @@
             <p class="ops-section-copy">高危审批、人工介入和跨模块高危发现合并在一个工作面里看。</p>
           </CardHeader>
           <CardContent class="space-y-5 pt-5">
+            <ModuleFeedbackCard
+              v-if="overviewFeedback.todos.error"
+              title="待处置队列同步失败"
+              description="审批队列和人工介入列表没有成功返回，先不要据此判断当前待办压力。"
+              :error="overviewFeedback.todos.error"
+              :logs="overviewFeedback.todos.logs"
+              @retry="loadAll"
+            />
+            <template v-else>
             <div>
               <div class="mb-3 flex items-center justify-between">
                 <p class="text-sm font-medium text-foreground">待审批事件</p>
@@ -228,6 +263,7 @@
                 <p class="ops-empty-copy">执行器没有积压失败任务，当前链路更适合做回顾和调优。</p>
               </div>
             </div>
+            </template>
           </CardContent>
         </Card>
       </section>
@@ -242,6 +278,14 @@
             <div v-if="loading" class="ops-empty min-h-[14rem]">
               <Skeleton class="size-40 rounded-full" />
             </div>
+            <ModuleFeedbackCard
+              v-else-if="overviewFeedback.defenseStats.error"
+              title="风险组成同步失败"
+              description="威胁等级分布没有成功返回，当前无法判断是高压风险还是噪声堆积。"
+              :error="overviewFeedback.defenseStats.error"
+              :logs="overviewFeedback.defenseStats.logs"
+              @retry="loadAll"
+            />
             <div v-else-if="!defenseStats?.threat_level_dist?.length" class="ops-empty min-h-[14rem]">
               <p class="ops-empty-title">还没有风险组成数据</p>
               <p class="ops-empty-copy">当事件进入聚合后，这里会展示高危与中低危的分布关系。</p>
@@ -287,6 +331,14 @@
             <div v-if="loading" class="ops-empty">
               <Skeleton class="h-56 w-full rounded-xl" />
             </div>
+            <ModuleFeedbackCard
+              v-else-if="overviewFeedback.defenseStats.error"
+              title="服务热区同步失败"
+              description="服务命中排行没有返回，当前不建议根据缺失数据调整暴露策略。"
+              :error="overviewFeedback.defenseStats.error"
+              :logs="overviewFeedback.defenseStats.logs"
+              @retry="loadAll"
+            />
             <div v-else-if="!defenseStats?.service_dist?.length" class="ops-empty">
               <p class="ops-empty-title">暂无服务暴露数据</p>
               <p class="ops-empty-copy">等到攻击命中服务栈之后，这里会显示热点服务排行和攻击次数。</p>
@@ -305,6 +357,15 @@
             <p class="ops-section-copy">用真实指标回看数据入口、审批执行和探测联动是否都在健康线内。</p>
           </CardHeader>
           <CardContent class="space-y-4 pt-5">
+            <ModuleFeedbackCard
+              v-if="overviewFeedback.chain.error"
+              title="链路状态同步失败"
+              description="链路健康指标没有返回，先不要据此判断是否可以继续放行或扩展自动化。"
+              :error="overviewFeedback.chain.error"
+              :logs="overviewFeedback.chain.logs"
+              @retry="loadAll"
+            />
+            <template v-else>
             <div class="grid gap-3 md:grid-cols-2">
               <div class="ops-highlight-tile">
                 <p class="ops-highlight-label">健康节点</p>
@@ -331,6 +392,7 @@
                 <span :class="item.ok ? 'text-emerald-300' : 'text-amber-300'" class="text-sm font-medium">{{ item.note }}</span>
               </div>
             </div>
+            </template>
           </CardContent>
         </Card>
 
@@ -343,6 +405,14 @@
             <div v-if="loading" class="ops-empty">
               <Skeleton class="h-56 w-full rounded-xl" />
             </div>
+            <ModuleFeedbackCard
+              v-else-if="overviewFeedback.defenseStats.error"
+              title="来源画像同步失败"
+              description="攻击来源画像没有成功返回，暂时无法判断是否存在持续攻击源。"
+              :error="overviewFeedback.defenseStats.error"
+              :logs="overviewFeedback.defenseStats.logs"
+              @retry="loadAll"
+            />
             <div v-else-if="!defenseStats?.top_ips?.length" class="ops-empty">
               <p class="ops-empty-title">暂无攻击来源画像</p>
               <p class="ops-empty-copy">当前还没有足够的来源样本，等到防御流量进入后这里会显示高频来源与风险评分。</p>
@@ -379,7 +449,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { Line, Bar, Doughnut } from 'vue-chartjs'
 import {
@@ -409,6 +479,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import ModuleFeedbackCard from '@/components/dashboard/ModuleFeedbackCard.vue'
 
 ChartJS.register(
   CategoryScale,
@@ -434,6 +505,15 @@ interface NarrativeCard {
   next: string
 }
 
+type OverviewModuleKey = 'metrics' | 'trends' | 'todos' | 'defenseStats' | 'chain'
+
+interface ModuleFeedback {
+  error: string | null
+  logs: string[]
+}
+
+const createFeedbackState = (): ModuleFeedback => ({ error: null, logs: [] })
+
 const loading = ref(false)
 const range = ref<TrendRange>('7d')
 
@@ -442,6 +522,48 @@ const trends = ref<OverviewTrends>({ range: '7d', alert_trend: [], high_alert_tr
 const todos = ref<OverviewTodos | null>(null)
 const defenseStats = ref<DefenseStats | null>(null)
 const chainStatusData = ref<OverviewChainStatus | null>(null)
+const overviewFeedback = reactive<Record<OverviewModuleKey, ModuleFeedback>>({
+  metrics: createFeedbackState(),
+  trends: createFeedbackState(),
+  todos: createFeedbackState(),
+  defenseStats: createFeedbackState(),
+  chain: createFeedbackState(),
+})
+
+const overviewModuleLabels: Record<OverviewModuleKey, string> = {
+  metrics: '关键指标',
+  trends: '趋势洞察',
+  todos: '待处置任务',
+  defenseStats: '风险统计',
+  chain: '链路状态',
+}
+
+const resetOverviewFeedback = () => {
+  ;(Object.keys(overviewFeedback) as OverviewModuleKey[]).forEach((key) => {
+    overviewFeedback[key].error = null
+    overviewFeedback[key].logs = []
+  })
+}
+
+const normalizeError = (error: unknown) => {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return '未知错误'
+  }
+}
+
+const setOverviewFeedback = (key: OverviewModuleKey, error: unknown) => {
+  const message = normalizeError(error)
+  overviewFeedback[key].error = message
+  overviewFeedback[key].logs = [
+    `${new Date().toLocaleString('zh-CN')} ${overviewModuleLabels[key]}同步失败`,
+    message,
+  ]
+  console.error(`Overview ${key} load failed:`, error)
+}
 
 const defenseMetrics = computed(() => metrics.value?.defense ?? null)
 const probeMetrics = computed(() => metrics.value?.probe ?? null)
@@ -454,6 +576,16 @@ const rangeLabelMap: Record<TrendRange, string> = {
 }
 
 const rangeLabel = computed(() => rangeLabelMap[range.value])
+const overviewIssues = computed(() =>
+  (Object.keys(overviewFeedback) as OverviewModuleKey[])
+    .filter(key => overviewFeedback[key].error)
+    .map(key => ({
+      key,
+      label: overviewModuleLabels[key],
+      error: overviewFeedback[key].error,
+      logs: overviewFeedback[key].logs,
+    })),
+)
 
 const postureSummary = computed(() => {
   const d = defenseMetrics.value
@@ -741,6 +873,7 @@ const showDemoHint = computed(() => {
   const d = defenseMetrics.value
   const p = probeMetrics.value
   if (!d || !p) return false
+  if (overviewIssues.value.length) return false
   return (
     d.today_alerts === 0 &&
     d.pending_events === 0 &&
@@ -896,8 +1029,9 @@ const topIpAssessment = (count: number, score: number | null) => {
 
 const loadAll = async () => {
   loading.value = true
+  resetOverviewFeedback()
   try {
-    const [metricsSnapshot, trendSnapshot, todoSnapshot, defenseSnapshot, chainSnapshot] = await Promise.all([
+    const [metricsSnapshot, trendSnapshot, todoSnapshot, defenseSnapshot, chainSnapshot] = await Promise.allSettled([
       overviewApi.getMetrics(),
       overviewApi.getTrends(range.value),
       overviewApi.getTodos(),
@@ -905,18 +1039,50 @@ const loadAll = async () => {
       overviewApi.getChainStatus(),
     ])
 
-    metrics.value = metricsSnapshot
-    trends.value = trendSnapshot ?? { range: range.value, alert_trend: [], high_alert_trend: [], task_trend: [] }
-    todos.value = todoSnapshot ?? {
-      pending_events: [],
-      failed_tasks: [],
-      high_findings: [],
-      counts: { pending_events: 0, manual_required: 0, high_findings_new: 0 },
+    if (metricsSnapshot.status === 'fulfilled') {
+      metrics.value = metricsSnapshot.value
+    } else {
+      metrics.value = null
+      setOverviewFeedback('metrics', metricsSnapshot.reason)
     }
-    defenseStats.value = defenseSnapshot ?? { range: range.value, total: 0, high_total: 0, threat_level_dist: [], service_dist: [], top_ips: [] }
-    chainStatusData.value = chainSnapshot ?? { defense: [], probe: [], generated_at: new Date().toISOString() }
-  } catch (error) {
-    console.error('Overview load failed:', error)
+
+    if (trendSnapshot.status === 'fulfilled') {
+      trends.value = trendSnapshot.value ?? { range: range.value, alert_trend: [], high_alert_trend: [], task_trend: [] }
+    } else {
+      trends.value = { range: range.value, alert_trend: [], high_alert_trend: [], task_trend: [] }
+      setOverviewFeedback('trends', trendSnapshot.reason)
+    }
+
+    if (todoSnapshot.status === 'fulfilled') {
+      todos.value = todoSnapshot.value ?? {
+        pending_events: [],
+        failed_tasks: [],
+        high_findings: [],
+        counts: { pending_events: 0, manual_required: 0, high_findings_new: 0 },
+      }
+    } else {
+      todos.value = {
+        pending_events: [],
+        failed_tasks: [],
+        high_findings: [],
+        counts: { pending_events: 0, manual_required: 0, high_findings_new: 0 },
+      }
+      setOverviewFeedback('todos', todoSnapshot.reason)
+    }
+
+    if (defenseSnapshot.status === 'fulfilled') {
+      defenseStats.value = defenseSnapshot.value ?? { range: range.value, total: 0, high_total: 0, threat_level_dist: [], service_dist: [], top_ips: [] }
+    } else {
+      defenseStats.value = { range: range.value, total: 0, high_total: 0, threat_level_dist: [], service_dist: [], top_ips: [] }
+      setOverviewFeedback('defenseStats', defenseSnapshot.reason)
+    }
+
+    if (chainSnapshot.status === 'fulfilled') {
+      chainStatusData.value = chainSnapshot.value ?? { defense: [], probe: [], generated_at: new Date().toISOString() }
+    } else {
+      chainStatusData.value = { defense: [], probe: [], generated_at: new Date().toISOString() }
+      setOverviewFeedback('chain', chainSnapshot.reason)
+    }
   } finally {
     loading.value = false
   }

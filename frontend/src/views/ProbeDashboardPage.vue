@@ -26,6 +26,15 @@
               </div>
             </div>
 
+            <ModuleFeedbackCard
+              v-if="probeIssues.length"
+              title="部分探测模块同步失败"
+              description="页面已经保留成功模块，其余分区可继续单独排查，不需要整页一起报废。"
+              :error="`异常模块：${probeIssues.map(item => item.label).join('、')}`"
+              :logs="probeIssues.flatMap(item => item.logs)"
+              @retry="loadAll"
+            />
+
             <div class="grid gap-4 lg:grid-cols-[1.08fr_0.92fr]">
               <div class="ops-panel">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -113,7 +122,20 @@
       </section>
 
       <section class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
-        <Card v-for="card in narrativeCards" :key="card.label" class="ops-metric-card">
+        <ModuleFeedbackCard
+          v-if="probeFeedback.assets.error || probeFeedback.tasks.error || probeFeedback.findings.error"
+          class="lg:col-span-2 2xl:col-span-4"
+          title="核心探测指标暂时不可用"
+          description="资产、任务或漏洞模块没有完整同步成功，当前不展示聚合 KPI，避免误导后续判断。"
+          :error="[probeFeedback.assets.error, probeFeedback.tasks.error, probeFeedback.findings.error].filter(Boolean).join('；')"
+          :logs="[
+            ...probeFeedback.assets.logs,
+            ...probeFeedback.tasks.logs,
+            ...probeFeedback.findings.logs,
+          ]"
+          @retry="loadAll"
+        />
+        <Card v-for="card in narrativeCards" v-else :key="card.label" class="ops-metric-card">
           <div class="ops-metric-top">
             <div>
               <p class="ops-metric-label">{{ card.label }}</p>
@@ -148,6 +170,14 @@
             <div v-if="loading" class="space-y-2">
               <Skeleton v-for="i in 4" :key="i" class="h-18 w-full rounded-xl" />
             </div>
+            <ModuleFeedbackCard
+              v-else-if="probeFeedback.tasks.error"
+              title="任务队列同步失败"
+              description="最近任务列表没有返回，当前无法判断排队、运行和失败的真实情况。"
+              :error="probeFeedback.tasks.error"
+              :logs="probeFeedback.tasks.logs"
+              @retry="loadAll"
+            />
             <div v-else-if="recentTasks.length === 0" class="ops-empty">
               <p class="ops-empty-title">暂无扫描任务</p>
               <p class="ops-empty-copy">当前没有运行或历史任务，建议先导入样本资产或创建首个扫描任务。</p>
@@ -191,6 +221,14 @@
             <div v-if="loading" class="ops-empty min-h-[14rem]">
               <Skeleton class="size-40 rounded-full" />
             </div>
+            <ModuleFeedbackCard
+              v-else-if="probeFeedback.findings.error"
+              title="漏洞结构同步失败"
+              description="严重程度分布没有返回，暂时无法判断当前应该先补洞还是继续扩面。"
+              :error="probeFeedback.findings.error"
+              :logs="probeFeedback.findings.logs"
+              @retry="loadAll"
+            />
             <div v-else-if="stats.totalFindings === 0" class="ops-empty min-h-[14rem]">
               <p class="ops-empty-title">暂无漏洞发现</p>
               <p class="ops-empty-copy">等到扫描结果完成解析后，这里会显示严重程度结构和当前暴露压力。</p>
@@ -229,6 +267,14 @@
             <div v-if="loading" class="ops-empty min-h-[14rem]">
               <Skeleton class="size-36 rounded-full" />
             </div>
+            <ModuleFeedbackCard
+              v-else-if="probeFeedback.tasks.error"
+              title="任务状态同步失败"
+              description="当前拿不到任务状态统计，先不要据此决定扩容还是排障。"
+              :error="probeFeedback.tasks.error"
+              :logs="probeFeedback.tasks.logs"
+              @retry="loadAll"
+            />
             <template v-else>
               <div class="mx-auto h-52 w-52 max-w-full">
                 <Doughnut :data="taskStateChartData" :options="taskDoughnutOptions" />
@@ -267,6 +313,14 @@
             <div v-if="loading" class="ops-empty">
               <Skeleton class="h-52 w-full rounded-xl" />
             </div>
+            <ModuleFeedbackCard
+              v-else-if="probeFeedback.tasks.error"
+              title="交付趋势同步失败"
+              description="交付趋势没有成功返回，当前无法确认任务产出是否稳定。"
+              :error="probeFeedback.tasks.error"
+              :logs="probeFeedback.tasks.logs"
+              @retry="loadAll"
+            />
             <div v-else class="h-[19rem]">
               <Bar :data="trendChartData" :options="barOptions" />
             </div>
@@ -281,6 +335,15 @@
             <p class="ops-section-copy">确认资产、任务调度、结果解析是否都在健康线内，避免指标看起来正常但链路其实断裂。</p>
           </CardHeader>
           <CardContent class="space-y-4 pt-5">
+            <ModuleFeedbackCard
+              v-if="probeFeedback.chain.error"
+              title="探测链路状态同步失败"
+              description="链路健康指标没有返回，先不要根据当前页面决定是否扩面或排障。"
+              :error="probeFeedback.chain.error"
+              :logs="probeFeedback.chain.logs"
+              @retry="loadAll"
+            />
+            <template v-else>
             <div class="grid gap-3 md:grid-cols-2">
               <div class="ops-highlight-tile">
                 <p class="ops-highlight-label">健康节点</p>
@@ -307,6 +370,7 @@
                 <span :class="item.ok ? 'text-emerald-300' : 'text-amber-300'" class="text-sm font-medium">{{ item.note }}</span>
               </div>
             </div>
+            </template>
           </CardContent>
         </Card>
 
@@ -319,6 +383,14 @@
             <div v-if="loading" class="ops-empty">
               <Skeleton class="h-56 w-full rounded-xl" />
             </div>
+            <ModuleFeedbackCard
+              v-else-if="probeFeedback.findings.error"
+              title="高危发现同步失败"
+              description="高危发现列表没有返回，当前无法确认最需要优先处理的资产和漏洞。"
+              :error="probeFeedback.findings.error"
+              :logs="probeFeedback.findings.logs"
+              @retry="loadAll"
+            />
             <div v-else-if="highFindings.length === 0" class="ops-empty">
               <p class="ops-empty-title">暂无高危发现</p>
               <p class="ops-empty-copy">当前还没有高危漏洞样本，等扫描结果积累后这里会列出最需要优先确认的发现。</p>
@@ -353,7 +425,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Doughnut, Bar } from 'vue-chartjs'
 import {
   Chart as ChartJS,
@@ -372,6 +444,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { RefreshCw, ExternalLink } from 'lucide-vue-next'
+import ModuleFeedbackCard from '@/components/dashboard/ModuleFeedbackCard.vue'
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title)
 
@@ -386,12 +459,27 @@ interface NarrativeCard {
   next: string
 }
 
+type ProbeModuleKey = 'assets' | 'tasks' | 'findings' | 'chain'
+
+interface ModuleFeedback {
+  error: string | null
+  logs: string[]
+}
+
+const createFeedbackState = (): ModuleFeedback => ({ error: null, logs: [] })
+
 const loading = ref(false)
 const recentTasks = ref<ScanTask[]>([])
 const trendTasks = ref<ScanTask[]>([])
 const highFindings = ref<ScanFinding[]>([])
 const taskStateCounts = ref({ CREATED: 0, RUNNING: 0, REPORTED: 0, FAILED: 0 })
 const chainStatusData = ref<OverviewChainStatus | null>(null)
+const probeFeedback = reactive<Record<ProbeModuleKey, ModuleFeedback>>({
+  assets: createFeedbackState(),
+  tasks: createFeedbackState(),
+  findings: createFeedbackState(),
+  chain: createFeedbackState(),
+})
 
 const stats = ref({
   totalAssets: 0,
@@ -404,7 +492,51 @@ const stats = ref({
   infoFindings: 0,
 })
 
+const probeModuleLabels: Record<ProbeModuleKey, string> = {
+  assets: '资产覆盖',
+  tasks: '任务链路',
+  findings: '漏洞发现',
+  chain: '链路状态',
+}
+
+const resetProbeFeedback = () => {
+  ;(Object.keys(probeFeedback) as ProbeModuleKey[]).forEach((key) => {
+    probeFeedback[key].error = null
+    probeFeedback[key].logs = []
+  })
+}
+
+const normalizeError = (error: unknown) => {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return '未知错误'
+  }
+}
+
+const setProbeFeedback = (key: ProbeModuleKey, error: unknown) => {
+  const message = normalizeError(error)
+  probeFeedback[key].error = message
+  probeFeedback[key].logs = [
+    `${new Date().toLocaleString('zh-CN')} ${probeModuleLabels[key]}同步失败`,
+    message,
+  ]
+  console.error(`Probe ${key} load failed:`, error)
+}
+
 const chainStatus = computed(() => chainStatusData.value?.probe ?? [])
+const probeIssues = computed(() =>
+  (Object.keys(probeFeedback) as ProbeModuleKey[])
+    .filter(key => probeFeedback[key].error)
+    .map(key => ({
+      key,
+      label: probeModuleLabels[key],
+      error: probeFeedback[key].error,
+      logs: probeFeedback[key].logs,
+    })),
+)
 const coverageRate = computed(() => stats.value.totalAssets > 0 ? Math.round((stats.value.enabledAssets / stats.value.totalAssets) * 100) : 0)
 const backlogCount = computed(() => taskStateCounts.value.CREATED + taskStateCounts.value.RUNNING)
 const deliveryRate = computed(() => {
@@ -694,7 +826,14 @@ const throughputHighlights = computed(() => {
   ]
 })
 
-const showDemoHint = computed(() => !loading.value && stats.value.totalAssets === 0 && stats.value.totalFindings === 0 && stats.value.runningTasks === 0 && recentTasks.value.length === 0)
+const showDemoHint = computed(() =>
+  !loading.value &&
+  probeIssues.value.length === 0 &&
+  stats.value.totalAssets === 0 &&
+  stats.value.totalFindings === 0 &&
+  stats.value.runningTasks === 0 &&
+  recentTasks.value.length === 0,
+)
 
 const severityChartData = computed(() => ({
   labels: severitySummary.value.map(item => item.label),
@@ -778,63 +917,85 @@ const barOptions = {
 
 const loadAll = async () => {
   loading.value = true
+  resetProbeFeedback()
   try {
-    const [
-      assetsAll,
-      assetsEnabled,
-      tasksRunning,
-      tasksRecent,
-      findingsAll,
-      findingsHigh,
-      findingsMed,
-      findingsLow,
-      findingsInfo,
-      stateCreated,
-      stateRunning,
-      stateReported,
-      stateFailed,
-      tasksTrend,
-      chainSnapshot,
-    ] = await Promise.all([
-      scanApi.getAssets({ page_size: 1 }),
-      scanApi.getAssets({ enabled: true, page_size: 1 }),
-      scanApi.getTasks({ state: 'RUNNING', page_size: 1 }),
-      scanApi.getTasks({ page: 1, page_size: 6 }),
-      scanApi.getFindings({ page_size: 1 }),
-      scanApi.getFindings({ severity: 'HIGH', page_size: 8 }),
-      scanApi.getFindings({ severity: 'MEDIUM', page_size: 1 }),
-      scanApi.getFindings({ severity: 'LOW', page_size: 1 }),
-      scanApi.getFindings({ severity: 'INFO', page_size: 1 }),
-      scanApi.getTasks({ state: 'CREATED', page_size: 1 }),
-      scanApi.getTasks({ state: 'RUNNING', page_size: 1 }),
-      scanApi.getTasks({ state: 'REPORTED', page_size: 1 }),
-      scanApi.getTasks({ state: 'FAILED', page_size: 1 }),
-      scanApi.getTasks({ page: 1, page_size: 100 }),
+    const [assetsSnapshot, tasksSnapshot, findingsSnapshot, chainSnapshot] = await Promise.allSettled([
+      Promise.all([
+        scanApi.getAssets({ page_size: 1 }),
+        scanApi.getAssets({ enabled: true, page_size: 1 }),
+      ]),
+      Promise.all([
+        scanApi.getTasks({ state: 'RUNNING', page_size: 1 }),
+        scanApi.getTasks({ page: 1, page_size: 6 }),
+        scanApi.getTasks({ state: 'CREATED', page_size: 1 }),
+        scanApi.getTasks({ state: 'RUNNING', page_size: 1 }),
+        scanApi.getTasks({ state: 'REPORTED', page_size: 1 }),
+        scanApi.getTasks({ state: 'FAILED', page_size: 1 }),
+        scanApi.getTasks({ page: 1, page_size: 100 }),
+      ]),
+      Promise.all([
+        scanApi.getFindings({ page_size: 1 }),
+        scanApi.getFindings({ severity: 'HIGH', page_size: 8 }),
+        scanApi.getFindings({ severity: 'MEDIUM', page_size: 1 }),
+        scanApi.getFindings({ severity: 'LOW', page_size: 1 }),
+        scanApi.getFindings({ severity: 'INFO', page_size: 1 }),
+      ]),
       overviewApi.getChainStatus(),
     ])
 
-    stats.value.totalAssets = assetsAll.total
-    stats.value.enabledAssets = assetsEnabled.total
-    stats.value.runningTasks = tasksRunning.total
-    stats.value.totalFindings = findingsAll.total
-    stats.value.highFindings = findingsHigh.total
-    stats.value.mediumFindings = findingsMed.total
-    stats.value.lowFindings = findingsLow.total
-    stats.value.infoFindings = findingsInfo.total
-
-    taskStateCounts.value = {
-      CREATED: stateCreated.total,
-      RUNNING: stateRunning.total,
-      REPORTED: stateReported.total,
-      FAILED: stateFailed.total,
+    if (assetsSnapshot.status === 'fulfilled') {
+      const [assetsAll, assetsEnabled] = assetsSnapshot.value
+      stats.value.totalAssets = assetsAll.total
+      stats.value.enabledAssets = assetsEnabled.total
+    } else {
+      stats.value.totalAssets = 0
+      stats.value.enabledAssets = 0
+      setProbeFeedback('assets', assetsSnapshot.reason)
     }
 
-    recentTasks.value = tasksRecent.items
-    trendTasks.value = tasksTrend.items
-    highFindings.value = findingsHigh.items
-    chainStatusData.value = chainSnapshot ?? { defense: [], probe: [], generated_at: new Date().toISOString() }
-  } catch (error) {
-    console.error('Failed to load probe dashboard:', error)
+    if (tasksSnapshot.status === 'fulfilled') {
+      const [tasksRunning, tasksRecent, stateCreated, stateRunning, stateReported, stateFailed, tasksTrend] = tasksSnapshot.value
+      stats.value.runningTasks = tasksRunning.total
+      taskStateCounts.value = {
+        CREATED: stateCreated.total,
+        RUNNING: stateRunning.total,
+        REPORTED: stateReported.total,
+        FAILED: stateFailed.total,
+      }
+      recentTasks.value = tasksRecent.items
+      trendTasks.value = tasksTrend.items
+    } else {
+      stats.value.runningTasks = 0
+      taskStateCounts.value = { CREATED: 0, RUNNING: 0, REPORTED: 0, FAILED: 0 }
+      recentTasks.value = []
+      trendTasks.value = []
+      setProbeFeedback('tasks', tasksSnapshot.reason)
+    }
+
+    if (findingsSnapshot.status === 'fulfilled') {
+      const [findingsAll, findingsHigh, findingsMed, findingsLow, findingsInfo] = findingsSnapshot.value
+      stats.value.totalFindings = findingsAll.total
+      stats.value.highFindings = findingsHigh.total
+      stats.value.mediumFindings = findingsMed.total
+      stats.value.lowFindings = findingsLow.total
+      stats.value.infoFindings = findingsInfo.total
+      highFindings.value = findingsHigh.items
+    } else {
+      stats.value.totalFindings = 0
+      stats.value.highFindings = 0
+      stats.value.mediumFindings = 0
+      stats.value.lowFindings = 0
+      stats.value.infoFindings = 0
+      highFindings.value = []
+      setProbeFeedback('findings', findingsSnapshot.reason)
+    }
+
+    if (chainSnapshot.status === 'fulfilled') {
+      chainStatusData.value = chainSnapshot.value ?? { defense: [], probe: [], generated_at: new Date().toISOString() }
+    } else {
+      chainStatusData.value = { defense: [], probe: [], generated_at: new Date().toISOString() }
+      setProbeFeedback('chain', chainSnapshot.reason)
+    }
   } finally {
     loading.value = false
   }
