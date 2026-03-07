@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -18,6 +18,8 @@ from core.database import (
     WorkflowVersion,
     get_db,
 )
+from services.audit_service import AuditService
+from services.workflow_release import apply_release_metadata, get_publish_lock
 from services.workflow_dsl import validate_workflow_dsl
 from services.workflow_validator import validate_workflow_publish
 
@@ -31,6 +33,8 @@ def _utc_now() -> datetime:
 def _iso(dt: Optional[datetime]) -> Optional[str]:
     if dt is None:
         return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
@@ -78,6 +82,56 @@ def _load_latest_version(db: Session, workflow_id: int, latest_version: int) -> 
     return fallback
 
 
+def _load_target_version(db: Session, workflow_id: int, version: int) -> WorkflowVersion:
+    row = (
+        db.query(WorkflowVersion)
+        .filter(
+            WorkflowVersion.workflow_id == workflow_id,
+            WorkflowVersion.version == version,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail={
+            "code": 40441,
+            "message": f"workflow version {version} not found",
+            "data": {"workflow_id": workflow_id, "version": version},
+        })
+    return row
+
+
+def _load_version_dsl(version: WorkflowVersion) -> Dict[str, Any]:
+    try:
+        payload = json.loads(version.dsl_json or "{}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"invalid workflow dsl snapshot: {exc}")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=500, detail="invalid workflow dsl snapshot: payload must be object")
+    return payload
+
+
+def _set_published_version(
+    db: Session,
+    definition: WorkflowDefinition,
+    target_version: WorkflowVersion,
+    *,
+    actor: str,
+    now: datetime,
+) -> Optional[int]:
+    previous_published_version = definition.published_version
+    if previous_published_version is not None and previous_published_version != target_version.version:
+        previous_row = _load_target_version(db, definition.id, previous_published_version)
+        previous_row.definition_state = "VALIDATED"
+        previous_row.updated_at = now
+    target_version.definition_state = "PUBLISHED"
+    target_version.updated_at = now
+    definition.definition_state = "PUBLISHED"
+    definition.published_version = target_version.version
+    definition.updated_by = actor
+    definition.updated_at = now
+    return previous_published_version
+
+
 def _normalize_and_validate_dsl(workflow_key: str, dsl: Dict[str, Any]) -> Dict[str, Any]:
     payload = dict(dsl)
     if not payload.get("workflow_id"):
@@ -102,6 +156,20 @@ class WorkflowUpdateRequest(BaseModel):
     description: Optional[str] = Field(default=None, max_length=500)
     dsl: Dict[str, Any]
     change_note: Optional[str] = Field(default=None, max_length=500)
+
+
+class WorkflowPublishRequest(BaseModel):
+    version_tag: Optional[int] = Field(default=None, ge=1)
+    canary_percent: int = Field(default=100, ge=1, le=100)
+    effective_at: Optional[datetime] = None
+    approval_reason: str = Field(min_length=1, max_length=500)
+    trace_id: Optional[str] = Field(default=None, max_length=128)
+
+
+class WorkflowRollbackRequest(BaseModel):
+    target_version: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=500)
+    trace_id: Optional[str] = Field(default=None, max_length=128)
 
 
 @router.get("")
@@ -336,4 +404,181 @@ async def validate_workflow(
             "summary": result["summary"],
         },
         "message": "workflow validated",
+    }
+
+
+@router.post("/{workflow_id}/publish")
+async def publish_workflow(
+    workflow_id: int,
+    payload: WorkflowPublishRequest,
+    req: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("system:config")),
+):
+    definition = db.query(WorkflowDefinition).filter(WorkflowDefinition.id == workflow_id).first()
+    if definition is None:
+        raise HTTPException(status_code=404, detail="workflow not found")
+
+    if payload.version_tag is not None and payload.version_tag != definition.latest_version:
+        raise HTTPException(status_code=409, detail={
+            "code": 40942,
+            "message": f"version_tag mismatch: expected {definition.latest_version}, got {payload.version_tag}",
+            "data": {"workflow_id": definition.id, "version_tag": payload.version_tag},
+        })
+
+    trace_id = payload.trace_id or getattr(req.state, "trace_id", None)
+    actor = str(current_user.username)
+    publish_lock = get_publish_lock(definition.id)
+    if not publish_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail={
+            "code": 40941,
+            "message": "workflow publish already in progress",
+            "data": {"workflow_id": definition.id},
+        })
+
+    try:
+        latest = _load_latest_version(db, workflow_id, definition.latest_version)
+        validation_result = validate_workflow_publish(_load_version_dsl(latest))
+        if not validation_result["valid"]:
+            raise HTTPException(status_code=400, detail={
+                "code": 40041,
+                "message": "workflow publish validation failed",
+                "data": {
+                    "workflow_id": definition.id,
+                    "workflow_key": definition.workflow_key,
+                    "version": latest.version,
+                    "validation": validation_result,
+                },
+            })
+
+        released_dsl = apply_release_metadata(
+            validation_result["normalized_dsl"],
+            canary_percent=payload.canary_percent,
+            effective_at=payload.effective_at,
+            approval_reason=payload.approval_reason,
+            actor=actor,
+            trace_id=trace_id,
+        )
+        latest.dsl_json = json.dumps(released_dsl, ensure_ascii=False)
+        now = _utc_now()
+        previous_published_version = _set_published_version(
+            db,
+            definition,
+            latest,
+            actor=actor,
+            now=now,
+        )
+        AuditService.log(
+            db=db,
+            actor=actor,
+            action="workflow_publish",
+            target=f"{definition.workflow_key}:v{latest.version}",
+            target_type="workflow",
+            reason=payload.approval_reason,
+            result="success",
+            trace_id=trace_id,
+            auto_commit=False,
+        )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail={
+            "code": 50041,
+            "message": "workflow publish failed",
+            "data": {"workflow_id": definition.id, "detail": str(exc)},
+        })
+    finally:
+        publish_lock.release()
+
+    return {
+        "code": 0,
+        "data": {
+            "workflow_id": definition.id,
+            "workflow_key": definition.workflow_key,
+            "version": latest.version,
+            "published_version": definition.published_version,
+            "previous_published_version": previous_published_version,
+            "definition_state": definition.definition_state,
+            "canary_percent": payload.canary_percent,
+            "effective_at": _iso(payload.effective_at),
+            "approval_reason": payload.approval_reason,
+            "trace_id": trace_id,
+        },
+        "message": "workflow published",
+    }
+
+
+@router.post("/{workflow_id}/rollback")
+async def rollback_workflow(
+    workflow_id: int,
+    payload: WorkflowRollbackRequest,
+    req: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("system:config")),
+):
+    definition = db.query(WorkflowDefinition).filter(WorkflowDefinition.id == workflow_id).first()
+    if definition is None:
+        raise HTTPException(status_code=404, detail="workflow not found")
+
+    trace_id = payload.trace_id or getattr(req.state, "trace_id", None)
+    actor = str(current_user.username)
+    publish_lock = get_publish_lock(definition.id)
+    if not publish_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail={
+            "code": 40941,
+            "message": "workflow publish already in progress",
+            "data": {"workflow_id": definition.id},
+        })
+
+    try:
+        target_version = _load_target_version(db, definition.id, payload.target_version)
+        now = _utc_now()
+        previous_published_version = _set_published_version(
+            db,
+            definition,
+            target_version,
+            actor=actor,
+            now=now,
+        )
+        AuditService.log(
+            db=db,
+            actor=actor,
+            action="workflow_rollback",
+            target=f"{definition.workflow_key}:v{payload.target_version}",
+            target_type="workflow",
+            reason=payload.reason,
+            result="success",
+            trace_id=trace_id,
+            auto_commit=False,
+        )
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail={
+            "code": 50042,
+            "message": "workflow rollback failed",
+            "data": {"workflow_id": definition.id, "detail": str(exc)},
+        })
+    finally:
+        publish_lock.release()
+
+    return {
+        "code": 0,
+        "data": {
+            "workflow_id": definition.id,
+            "workflow_key": definition.workflow_key,
+            "rolled_back_to_version": target_version.version,
+            "previous_published_version": previous_published_version,
+            "published_version": definition.published_version,
+            "definition_state": definition.definition_state,
+            "reason": payload.reason,
+            "trace_id": trace_id,
+        },
+        "message": "workflow rolled back",
     }

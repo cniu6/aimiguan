@@ -2402,6 +2402,9 @@ requirements.txt
 - `M2-02 发布前校验器（后端）`
   - 代码：`backend/services/workflow_validator.py`、`backend/api/workflow.py`、`tests/test_workflow_m2_02_validator.py`、`frontend/src/api/workflow.ts`、`frontend/src/views/WorkflowEditorPage.vue`
   - 验证：`python -m pytest tests/test_workflow_dsl.py tests/test_workflow_m1_03_api.py tests/test_workflow_m2_02_validator.py -q`、`cd frontend && npx vite build`
+- `M2-03 发布、灰度、回滚 API（后端）`
+  - 代码：`backend/api/workflow.py`、`backend/services/workflow_release.py`、`tests/test_workflow_m2_03_release_api.py`
+  - 验证：`python -m pytest tests/test_workflow_m1_03_api.py tests/test_workflow_m2_02_validator.py tests/test_workflow_m2_03_release_api.py -q`
 
 ### 全链路可视化自定义编辑（详细规划）
 
@@ -2521,11 +2524,11 @@ requirements.txt
   - [x] 兼容校验：关键动作节点必须可映射现有服务适配器。
   - 验收证据：错误码矩阵 + 负例测试集。
 
-- [ ] `M2-03` 发布、灰度、回滚 API（后端）
-  - [ ] `POST /publish`：支持灰度比例、生效时间、审批理由。
-  - [ ] `POST /rollback`：按版本回滚并写审计。
-  - [ ] 发布冲突控制：同一流程同一时刻仅一个发布事务。
-  - [ ] 落审计：`actor/action/reason/result/trace_id`。
+- [x] `M2-03` 发布、灰度、回滚 API（后端）
+  - [x] `POST /publish`：支持灰度比例、生效时间、审批理由。
+  - [x] `POST /rollback`：按版本回滚并写审计。
+  - [x] 发布冲突控制：同一流程同一时刻仅一个发布事务。
+  - [x] 落审计：`actor/action/reason/result/trace_id`。
   - 验收证据：并发发布冲突测试 + 回滚回放测试。
 
 - [ ] `M2-04` RBAC 与审批门禁（后端+前端）
