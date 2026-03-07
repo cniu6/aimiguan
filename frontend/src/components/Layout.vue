@@ -1,7 +1,4 @@
 <template>
-  <Transition name="route-progress">
-    <div v-if="isRouteChanging" class="route-progress" :style="{ transform: `scaleX(${routeProgress})` }" />
-  </Transition>
   <div ref="shellRef" class="flex h-screen flex-col bg-background/50 text-foreground">
     <header class="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div class="flex h-14 items-center px-4 sm:px-6">
@@ -429,8 +426,6 @@ const shellRef = ref<HTMLElement | null>(null)
 const sidebarRef = ref<HTMLElement | null>(null)
 
 // 侧边栏状态与动画配置
-const isRouteChanging = ref(false)
-const routeProgress = ref(0)
 const isDarkMode = ref(false)
 const THEME_KEY = 'theme'
 const SIDEBAR_COLLAPSED_KEY = 'layout_sidebar_collapsed'
@@ -832,33 +827,9 @@ const runModeTransition = async (targetMode: ModeKey) => {
     }
   })
 
-  // --- Animation Sequence (Slower & Cinematic) ---
-  
-  // 1. Initiate: Content scales down
-  modeTimeline
-    .to(contentEl, {
-      filter: 'blur(4px) grayscale(80%)',
-      opacity: 0.6,
-      duration: 0.6,
-      ease: 'power2.inOut'
-    }, 0)
-    .to(shellEl, {
-      backgroundColor: '#000',
-      duration: 0.6
-    }, 0)
+  // --- Animation Sequence ---
 
-  if (sidebarEl) {
-    modeTimeline.to(sidebarEl, {
-      scaleX: 1,
-      filter: 'blur(4px) grayscale(80%)',
-      opacity: 0.6,
-      transformOrigin: 'center center',
-      duration: 0.6,
-      ease: 'power2.inOut'
-    }, 0)
-  }
-
-  // 2. Tech Wipe: Panels slam down (Full Cover)
+  // 1. Tech Wipe: Panels slam down (Full Cover)
   modeTimeline.to(panels, {
     scaleY: 1,
     duration: 0.7,
@@ -918,22 +889,8 @@ const runModeTransition = async (targetMode: ModeKey) => {
 
   // 5. Switch Router (Hidden behind panels)
   modeTimeline.add(() => {
-    void router.push(modeDefaultRoute[targetMode]).then(() => {
-      gsap.set(contentEl, {
-        filter: 'blur(10px) brightness(1.5)',
-        opacity: 0
-      })
-
-      if (sidebarEl) {
-        gsap.set(sidebarEl, {
-          filter: 'blur(10px) brightness(1.5)',
-          scaleX: 1,
-          opacity: 0,
-          transformOrigin: 'center center'
-        })
-      }
-    })
-  }, 1.2) // Switch happens while text is visible
+    void router.push(modeDefaultRoute[targetMode])
+  }, 1.2)
 
   // 6. Reveal: Panels retract (Starts after title fades out)
   const revealStart = 1.8 // Delayed start
@@ -971,31 +928,6 @@ const runModeTransition = async (targetMode: ModeKey) => {
       }, revealStart)
   }
 
-  // 9. Content Returns
-  modeTimeline.to(contentEl, {
-    filter: 'blur(0px) brightness(1)',
-    opacity: 1,
-    duration: 0.8,
-    ease: 'power3.out'
-  }, revealStart + 0.2)
-
-  if (sidebarEl) {
-    modeTimeline.to(sidebarEl, {
-      scaleX: 1,
-      scaleY: 1,
-      filter: 'blur(0px) brightness(1)',
-      opacity: 1,
-      duration: 0.8,
-      ease: 'power3.out'
-    }, revealStart + 0.2)
-  }
-  
-  // 10. Restore Shell
-  modeTimeline.to(shellEl, {
-    backgroundColor: '',
-    clearProps: 'backgroundColor',
-    duration: 0.5
-  }, revealStart + 0.3)
 }
 
 const switchMode = (mode: ModeKey) => {
@@ -1027,30 +959,6 @@ const goToProfile = () => {
   router.push('/profile')
 }
 
-// 路由切换进度与页面过渡动画
-let progressTimer: ReturnType<typeof setTimeout> | null = null
-
-watch(() => route.fullPath, () => {
-  isRouteChanging.value = true
-  routeProgress.value = 0.25
-  
-  if (progressTimer) clearTimeout(progressTimer)
-  
-  progressTimer = setTimeout(() => {
-    routeProgress.value = 0.68
-  }, 180)
-  
-  nextTick(() => {
-    setTimeout(() => {
-      routeProgress.value = 1
-      setTimeout(() => {
-        isRouteChanging.value = false
-        routeProgress.value = 0
-      }, 220)
-    }, 120)
-  })
-})
-
 onMounted(() => {
   initTheme()
   loadSidebarPreference()
@@ -1069,10 +977,6 @@ onUnmounted(() => {
   if (modeTimeline) {
     modeTimeline.kill()
     modeTimeline = null
-  }
-  if (progressTimer) {
-    clearTimeout(progressTimer)
-    progressTimer = null
   }
   stopSidebarResize()
   stopSidebarWidthAnimation()
