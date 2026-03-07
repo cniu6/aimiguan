@@ -247,7 +247,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Activity, Download, Monitor, RefreshCw, Search, ShieldAlert, ShieldCheck, X } from 'lucide-vue-next'
+import { Activity, Download, RefreshCw, Search, ShieldAlert, ShieldCheck } from 'lucide-vue-next'
 import NmapHostDetailDialog from '@/components/NmapHostDetailDialog.vue'
 
 interface ThreatEvent {

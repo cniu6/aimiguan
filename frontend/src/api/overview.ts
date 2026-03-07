@@ -141,22 +141,22 @@ const createEmptyChainStatus = (): OverviewChainStatus => ({
 export const overviewApi = {
   async getMetrics(): Promise<OverviewMetrics> {
     const res = await apiClient.get('/overview/metrics')
-    return res as OverviewMetrics
+    return res as unknown as OverviewMetrics
   },
 
   async getTrends(range: TrendRange = '7d'): Promise<OverviewTrends> {
     const res = await apiClient.get('/overview/trends', { params: { range } })
-    return res as OverviewTrends
+    return res as unknown as OverviewTrends
   },
 
   async getTodos(): Promise<OverviewTodos> {
     const res = await apiClient.get('/overview/todos')
-    return res as OverviewTodos
+    return res as unknown as OverviewTodos
   },
 
   async getDefenseStats(range: TrendRange = '7d'): Promise<DefenseStats> {
     const res = await apiClient.get('/overview/defense-stats', { params: { range } })
-    return res as DefenseStats
+    return res as unknown as DefenseStats
   },
 
   async getChainStatus(): Promise<OverviewChainStatus> {
@@ -167,7 +167,7 @@ export const overviewApi = {
     try {
       const res = await apiClient.get('/overview/chain-status')
       chainStatusEndpointAvailable = true
-      return (res as OverviewChainStatus) ?? createEmptyChainStatus()
+      return (res as unknown as OverviewChainStatus) ?? createEmptyChainStatus()
     } catch (error: any) {
       if (error?.response?.status === 404) {
         chainStatusEndpointAvailable = false

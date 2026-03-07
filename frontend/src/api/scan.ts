@@ -165,7 +165,7 @@ export const scanApi = {
   // ── Nmap 配置 ──
   async getNmapConfig(): Promise<{ nmap_path: string | null; ip_ranges: string[]; scan_interval: number; enabled: boolean }> {
     const res = await apiClient.get('/scan/nmap/config')
-    return res as { nmap_path: string | null; ip_ranges: string[]; scan_interval: number; enabled: boolean }
+    return res as unknown as { nmap_path: string | null; ip_ranges: string[]; scan_interval: number; enabled: boolean }
   },
 
   async saveNmapConfig(config: {
@@ -248,7 +248,11 @@ export const scanApi = {
 
   async triggerVulnScan(): Promise<{ success: boolean; message: string }> {
     const res = await apiClient.post('/scan/nmap/vuln/scan')
-    return { success: true, message: res?.message ?? '扫描已启动' }
+    const record = res as unknown as Record<string, unknown> | null | undefined
+    const message = typeof record?.message === 'string'
+      ? String(record.message)
+      : '扫描已启动'
+    return { success: true, message }
   },
 }
 

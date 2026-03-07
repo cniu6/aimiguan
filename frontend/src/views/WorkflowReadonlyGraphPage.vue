@@ -186,7 +186,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { MarkerType, VueFlow, type Edge, type Node } from '@vue-flow/core'
+import { MarkerType, Position, VueFlow, type Edge, type Node, type NodeMouseEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { workflowApi, type WorkflowDetailResult, type WorkflowNode } from '@/api/workflow'
@@ -197,6 +197,19 @@ import { Badge } from '@/components/ui/badge'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import '@vue-flow/controls/dist/style.css'
+
+interface ReadonlyFlowNodeData {
+  name: string
+  type: string
+  status: string
+}
+
+type PositionedWorkflowNode = WorkflowNode & {
+  position: {
+    x: number
+    y: number
+  }
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -237,7 +250,7 @@ const resolveNodeStatus = (node: WorkflowNode): string => {
   return 'DRAFT'
 }
 
-const layoutNodes = (nodes: WorkflowNode[], edges: WorkflowDetailResult['dsl']['edges']) => {
+const layoutNodes = (nodes: WorkflowNode[], edges: WorkflowDetailResult['dsl']['edges']): PositionedWorkflowNode[] => {
   const incomingCount = new Map<string, number>()
   const graph = new Map<string, string[]>()
 
@@ -300,10 +313,10 @@ const layoutNodes = (nodes: WorkflowNode[], edges: WorkflowDetailResult['dsl']['
   })
 }
 
-const flowNodes = computed<Node[]>(() => {
+const flowNodes = computed<Node<ReadonlyFlowNodeData>[]>(() => {
   if (!detail.value) return []
   const positionedNodes = layoutNodes(detail.value.dsl.nodes, detail.value.dsl.edges)
-  return positionedNodes.map((node) => ({
+  return positionedNodes.map((node): Node<ReadonlyFlowNodeData> => ({
     id: node.id,
     type: 'default',
     position: node.position,
@@ -314,8 +327,8 @@ const flowNodes = computed<Node[]>(() => {
     },
     draggable: false,
     selectable: true,
-    sourcePosition: 'right',
-    targetPosition: 'left',
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
   }))
 })
 
@@ -348,9 +361,9 @@ const selectedNode = computed(() => {
   return detail.value.dsl.nodes.find((node) => node.id === selectedNodeId.value) || null
 })
 
-const onNodeClick = (_event: unknown, payload: { id?: string }) => {
-  if (!payload?.id) return
-  selectedNodeId.value = payload.id
+const onNodeClick = (event: NodeMouseEvent) => {
+  if (!event.node?.id) return
+  selectedNodeId.value = event.node.id
 }
 
 const loadWorkflow = async () => {

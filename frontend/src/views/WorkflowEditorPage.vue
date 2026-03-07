@@ -57,8 +57,8 @@
       <!-- VueFlow Canvas -->
       <div class="h-full pt-[49px]">
         <VueFlow
-          v-model:nodes="nodes"
-          v-model:edges="edges"
+          v-model:nodes="flowNodesModel"
+          v-model:edges="flowEdgesModel"
           :nodes-draggable="true"
           :nodes-connectable="true"
           :elements-selectable="true"
@@ -132,27 +132,27 @@
         </TabsList>
 
         <TabsContent value="properties" class="p-4">
-          <div v-if="!editingNode" class="py-8 text-center text-sm text-muted-foreground">
+          <div v-if="!editingNodeState" class="py-8 text-center text-sm text-muted-foreground">
             点击画布中的节点查看和编辑属性。
           </div>
           <div v-else class="space-y-4">
             <div class="space-y-1.5">
               <label class="text-xs font-medium text-muted-foreground">节点 ID</label>
-              <p class="rounded border border-border/40 bg-muted/20 px-2 py-1.5 font-mono text-xs text-foreground">{{ editingNode.id }}</p>
+              <p class="rounded border border-border/40 bg-muted/20 px-2 py-1.5 font-mono text-xs text-foreground">{{ editingNodeId }}</p>
             </div>
 
             <div class="space-y-1.5">
               <label class="text-xs font-medium text-muted-foreground">节点名称</label>
               <input
-                :value="editingNode.data.label"
+                :value="editingNodeDataState.label"
                 class="h-8 w-full rounded border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                @input="updateNodeLabel(editingNode!.id, ($event.target as HTMLInputElement).value)"
+                @input="updateNodeLabel(editingNodeId, ($event.target as HTMLInputElement).value)"
               />
             </div>
 
             <div class="space-y-1.5">
               <label class="text-xs font-medium text-muted-foreground">节点类型</label>
-              <Select :model-value="editingNode.data.nodeType" @update:model-value="(v: string) => updateNodeType(editingNode!.id, v)">
+              <Select :model-value="editingNodeDataState.nodeType" @update:model-value="(v) => updateNodeType(editingNodeId, String(v || 'action'))">
                 <SelectTrigger class="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -171,11 +171,11 @@
               <label class="text-xs font-medium text-muted-foreground">超时 (秒)</label>
               <input
                 type="number"
-                :value="editingNode.data.timeout"
+                :value="editingNodeDataState.timeout"
                 min="1"
                 max="3600"
                 class="h-8 w-full rounded border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                @input="updateNodeField(editingNode!.id, 'timeout', Number(($event.target as HTMLInputElement).value) || 30)"
+                @input="updateNodeField(editingNodeId, 'timeout', Number(($event.target as HTMLInputElement).value) || 30)"
               />
             </div>
 
@@ -187,22 +187,22 @@
                 <label class="text-[10px] text-muted-foreground">max_retries</label>
                 <input
                   type="number"
-                  :value="editingNode.data.retryPolicy?.max_retries ?? 0"
+                  :value="editingNodeDataState.retryPolicy.max_retries"
                   min="0"
                   max="10"
                   class="h-7 w-full rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                  @input="updateRetryField(editingNode!.id, 'max_retries', Number(($event.target as HTMLInputElement).value) || 0)"
+                  @input="updateRetryField(editingNodeId, 'max_retries', Number(($event.target as HTMLInputElement).value) || 0)"
                 />
               </div>
               <div class="space-y-1">
                 <label class="text-[10px] text-muted-foreground">backoff_seconds</label>
                 <input
                   type="number"
-                  :value="editingNode.data.retryPolicy?.backoff_seconds ?? 1"
+                  :value="editingNodeDataState.retryPolicy.backoff_seconds"
                   min="1"
                   max="3600"
                   class="h-7 w-full rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                  @input="updateRetryField(editingNode!.id, 'backoff_seconds', Number(($event.target as HTMLInputElement).value) || 1)"
+                  @input="updateRetryField(editingNodeId, 'backoff_seconds', Number(($event.target as HTMLInputElement).value) || 1)"
                 />
               </div>
               <div class="space-y-1">
@@ -210,19 +210,19 @@
                 <input
                   type="number"
                   step="0.1"
-                  :value="editingNode.data.retryPolicy?.backoff_multiplier ?? 1"
+                  :value="editingNodeDataState.retryPolicy.backoff_multiplier"
                   min="1"
                   max="5"
                   class="h-7 w-full rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                  @input="updateRetryField(editingNode!.id, 'backoff_multiplier', Number(($event.target as HTMLInputElement).value) || 1)"
+                  @input="updateRetryField(editingNodeId, 'backoff_multiplier', Number(($event.target as HTMLInputElement).value) || 1)"
                 />
               </div>
               <div class="space-y-1">
                 <label class="text-[10px] text-muted-foreground">retry_on (逗号分隔)</label>
                 <input
-                  :value="(editingNode.data.retryPolicy?.retry_on ?? []).join(', ')"
+                  :value="editingNodeDataState.retryPolicy.retry_on.join(', ')"
                   class="h-7 w-full rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                  @input="updateRetryOn(editingNode!.id, ($event.target as HTMLInputElement).value)"
+                  @input="updateRetryOn(editingNodeId, ($event.target as HTMLInputElement).value)"
                 />
               </div>
             </div>
@@ -242,19 +242,19 @@
                   :value="configJsonText"
                   rows="8"
                   class="w-full rounded border border-input bg-background px-2 py-1.5 font-mono text-xs leading-5 focus:outline-none focus:ring-1 focus:ring-ring"
-                  @input="onConfigJsonInput(editingNode!.id, ($event.target as HTMLTextAreaElement).value)"
+                  @input="onConfigJsonInput(editingNodeId, ($event.target as HTMLTextAreaElement).value)"
                 />
                 <p v-if="configJsonError" class="mt-1 text-[10px] text-destructive">{{ configJsonError }}</p>
               </div>
               <div v-else class="space-y-2">
-                <div v-for="(val, key) in editingNode.data.config" :key="String(key)" class="flex items-center gap-2">
+                <div v-for="(val, key) in editingNodeDataState.config" :key="String(key)" class="flex items-center gap-2">
                   <span class="w-24 truncate font-mono text-[10px] text-muted-foreground">{{ key }}</span>
                   <input
                     :value="typeof val === 'string' ? val : JSON.stringify(val)"
                     class="h-7 flex-1 rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                    @input="updateConfigField(editingNode!.id, String(key), ($event.target as HTMLInputElement).value)"
+                    @input="updateConfigField(editingNodeId, String(key), ($event.target as HTMLInputElement).value)"
                   />
-                  <button class="text-destructive hover:text-destructive/80" @click="removeConfigField(editingNode!.id, String(key))">
+                  <button class="text-destructive hover:text-destructive/80" @click="removeConfigField(editingNodeId, String(key))">
                     <X class="h-3 w-3" />
                   </button>
                 </div>
@@ -269,7 +269,7 @@
                     placeholder="value"
                     class="h-7 flex-1 rounded border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                   />
-                  <Button variant="ghost" size="sm" class="h-7 w-7 cursor-pointer p-0" :disabled="!newConfigKey.trim()" @click="addConfigField(editingNode!.id)">
+                  <Button variant="ghost" size="sm" class="h-7 w-7 cursor-pointer p-0" :disabled="!newConfigKey.trim()" @click="addConfigField(editingNodeId)">
                     <Plus class="h-3 w-3" />
                   </Button>
                 </div>
@@ -433,13 +433,16 @@ import { computed, markRaw, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import {
   ConnectionMode,
+  MarkerType,
   Position,
   VueFlow,
   type Connection,
   type Edge,
+  type EdgeMouseEvent,
   type EdgeChange,
   type Node,
   type NodeChange,
+  type NodeMouseEvent,
 } from '@vue-flow/core'
 import { Handle } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -504,6 +507,13 @@ interface EditorNodeData {
   config: Record<string, unknown>
 }
 
+type EditorFlowNode = Node<EditorNodeData>
+type EditorEdgeData = {
+  condition: string
+  priority: number
+}
+type EditorFlowEdge = Edge<EditorEdgeData>
+
 const route = useRoute()
 const router = useRouter()
 
@@ -566,6 +576,55 @@ let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
 const canPublishWorkflow = computed(() => !isNewMode.value && hasPermission('workflow_publish'))
 const canRollbackWorkflow = computed(() => !isNewMode.value && hasPermission('workflow_rollback') && publishedVersion.value !== null)
 
+function makeDefaultRetryPolicy(): EditorNodeData['retryPolicy'] {
+  return {
+    max_retries: 0,
+    backoff_seconds: 1,
+    backoff_multiplier: 1,
+    retry_on: [],
+  }
+}
+
+function normalizeNodeConfig(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {}
+  }
+  return { ...(value as Record<string, unknown>) }
+}
+
+function normalizeRetryPolicy(value: Partial<EditorNodeData['retryPolicy']> | null | undefined): EditorNodeData['retryPolicy'] {
+  return {
+    max_retries: typeof value?.max_retries === 'number' ? value.max_retries : 0,
+    backoff_seconds: typeof value?.backoff_seconds === 'number' ? value.backoff_seconds : 1,
+    backoff_multiplier: typeof value?.backoff_multiplier === 'number' ? value.backoff_multiplier : 1,
+    retry_on: Array.isArray(value?.retry_on) ? value.retry_on.map((item) => String(item)) : [],
+  }
+}
+
+function getEditorNodeData(node: Pick<EditorFlowNode, 'data'> | null | undefined): EditorNodeData {
+  const data = node?.data
+  return {
+    label: typeof data?.label === 'string' ? data.label : '',
+    nodeType: typeof data?.nodeType === 'string' ? data.nodeType : 'action',
+    timeout: typeof data?.timeout === 'number' ? data.timeout : 30,
+    retryPolicy: normalizeRetryPolicy(data?.retryPolicy),
+    config: normalizeNodeConfig(data?.config),
+  }
+}
+
+function updateNodeData(nodeId: string, updater: (data: EditorNodeData) => EditorNodeData): void {
+  const nextNodes = nodes.value.slice()
+  const index = nextNodes.findIndex((node) => node.id === nodeId)
+  if (index < 0) {
+    return
+  }
+  nextNodes[index] = {
+    ...nextNodes[index],
+    data: updater(getEditorNodeData(nextNodes[index])),
+  } as EditorFlowNode
+  nodes.value = nextNodes
+}
+
 const nodeTypeIcon = (type: string) => {
   const map: Record<string, unknown> = {
     trigger: markRaw(Zap),
@@ -583,9 +642,32 @@ const editingNode = computed(() => {
   return nodes.value.find((n) => n.id === selectedNodeId.value) || null
 })
 
+const editingNodeState = computed(() => {
+  if (!editingNode.value) return null
+  return {
+    id: editingNode.value.id,
+    data: getEditorNodeData(editingNode.value),
+  }
+})
+
+const editingNodeId = computed(() => editingNodeState.value?.id || '')
+const editingNodeDataState = computed(() => editingNodeState.value?.data || getEditorNodeData(undefined))
+const flowNodesModel = computed<Node[]>({
+  get: () => nodes.value as unknown as Node[],
+  set: (value) => {
+    nodes.value = value as EditorFlowNode[]
+  },
+})
+const flowEdgesModel = computed<Edge[]>({
+  get: () => edges.value as unknown as Edge[],
+  set: (value) => {
+    edges.value = value as EditorFlowEdge[]
+  },
+})
+
 watch(editingNode, (node) => {
   if (node) {
-    configJsonText.value = JSON.stringify(node.data.config || {}, null, 2)
+    configJsonText.value = JSON.stringify(getEditorNodeData(node).config, null, 2)
     configJsonError.value = ''
   }
 })
@@ -606,13 +688,6 @@ const scheduleAutoSave = () => {
   }, AUTO_SAVE_DELAY)
 }
 
-const makeDefaultRetryPolicy = () => ({
-  max_retries: 0,
-  backoff_seconds: 1,
-  backoff_multiplier: 1,
-  retry_on: [] as string[],
-})
-
 const addNode = (type: string) => {
   const id = `${type}_${nanoid(6)}`
   const labelMap: Record<string, string> = {
@@ -623,7 +698,7 @@ const addNode = (type: string) => {
     approval: '人工审批',
     ai: 'AI 节点',
   }
-  const newNode: Node<EditorNodeData> = {
+  const newNode: EditorFlowNode = {
     id,
     type: 'custom',
     position: { x: 100 + Math.random() * 200, y: 80 + Math.random() * 300 },
@@ -651,14 +726,15 @@ const removeNode = (nodeId: string) => {
 const duplicateNode = (nodeId: string) => {
   const source = nodes.value.find((n) => n.id === nodeId)
   if (!source) return
-  const newId = `${source.data.nodeType}_${nanoid(6)}`
-  const clone: Node<EditorNodeData> = {
+  const sourceData = getEditorNodeData(source)
+  const newId = `${sourceData.nodeType}_${nanoid(6)}`
+  const clone: EditorFlowNode = {
     id: newId,
     type: 'custom',
     position: { x: (source.position?.x ?? 0) + 40, y: (source.position?.y ?? 0) + 40 },
     data: {
-      ...JSON.parse(JSON.stringify(source.data)),
-      label: `${source.data.label} (复制)`,
+      ...JSON.parse(JSON.stringify(sourceData)),
+      label: `${sourceData.label} (复制)`,
     },
   }
   nodes.value = [...nodes.value, clone]
@@ -666,13 +742,13 @@ const duplicateNode = (nodeId: string) => {
   markDirty()
 }
 
-const onNodeClick = (_event: unknown, node: Node) => {
-  selectedNodeId.value = node.id
+const onNodeClick = (event: NodeMouseEvent) => {
+  selectedNodeId.value = event.node.id
   activeTab.value = 'properties'
 }
 
-const onEdgeClick = (_event: unknown, edge: Edge) => {
-  selectedEdgeId.value = edge.id
+const onEdgeClick = (event: EdgeMouseEvent) => {
+  selectedEdgeId.value = event.edge.id
   activeTab.value = 'edges'
 }
 
@@ -682,8 +758,9 @@ const onPaneClick = () => {
 }
 
 const onConnect = (connection: Connection) => {
+  if (!connection.source || !connection.target) return
   const edgeId = `edge_${nanoid(6)}`
-  const newEdge: Edge = {
+  const newEdge: EditorFlowEdge = {
     id: edgeId,
     source: connection.source,
     target: connection.target,
@@ -691,7 +768,7 @@ const onConnect = (connection: Connection) => {
     targetHandle: connection.targetHandle ?? undefined,
     label: 'true',
     data: { condition: 'true', priority: 0 },
-    markerEnd: 'arrowclosed',
+    markerEnd: MarkerType.ArrowClosed,
     style: { stroke: 'rgba(148,163,184,0.72)', strokeWidth: 1.2 },
     labelStyle: { fill: 'rgba(226,232,240,0.92)', fontSize: '11px', fontWeight: 500 },
     labelBgStyle: { fill: 'rgba(15,23,42,0.82)', fillOpacity: 0.95 },
@@ -706,52 +783,50 @@ const onNodesChange = (_changes: NodeChange[]) => { markDirty() }
 const onEdgesChange = (_changes: EdgeChange[]) => { markDirty() }
 
 const updateNodeLabel = (nodeId: string, label: string) => {
-  nodes.value = nodes.value.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, label } } : n)
+  updateNodeData(nodeId, (data) => ({ ...data, label }))
   markDirty()
 }
 
 const updateNodeType = (nodeId: string, nodeType: string) => {
-  nodes.value = nodes.value.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, nodeType } } : n)
+  updateNodeData(nodeId, (data) => ({ ...data, nodeType }))
   markDirty()
 }
 
 const updateNodeField = (nodeId: string, field: string, value: unknown) => {
-  nodes.value = nodes.value.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, [field]: value } } : n)
+  updateNodeData(nodeId, (data) => ({ ...data, [field]: value } as EditorNodeData))
   markDirty()
 }
 
 const updateRetryField = (nodeId: string, field: string, value: number) => {
-  nodes.value = nodes.value.map((n) => {
-    if (n.id !== nodeId) return n
-    return { ...n, data: { ...n.data, retryPolicy: { ...n.data.retryPolicy, [field]: value } } }
-  })
+  updateNodeData(nodeId, (data) => ({
+    ...data,
+    retryPolicy: { ...data.retryPolicy, [field]: value },
+  }))
   markDirty()
 }
 
 const updateRetryOn = (nodeId: string, raw: string) => {
   const arr = raw.split(',').map((s) => s.trim()).filter(Boolean)
-  nodes.value = nodes.value.map((n) => {
-    if (n.id !== nodeId) return n
-    return { ...n, data: { ...n.data, retryPolicy: { ...n.data.retryPolicy, retry_on: arr } } }
-  })
+  updateNodeData(nodeId, (data) => ({
+    ...data,
+    retryPolicy: { ...data.retryPolicy, retry_on: arr },
+  }))
   markDirty()
 }
 
 const updateConfigField = (nodeId: string, key: string, value: string) => {
-  nodes.value = nodes.value.map((n) => {
-    if (n.id !== nodeId) return n
-    const config = { ...n.data.config, [key]: value }
-    return { ...n, data: { ...n.data, config } }
-  })
+  updateNodeData(nodeId, (data) => ({
+    ...data,
+    config: { ...data.config, [key]: value },
+  }))
   markDirty()
 }
 
 const removeConfigField = (nodeId: string, key: string) => {
-  nodes.value = nodes.value.map((n) => {
-    if (n.id !== nodeId) return n
-    const config = { ...n.data.config }
+  updateNodeData(nodeId, (data) => {
+    const config = { ...data.config }
     delete config[key]
-    return { ...n, data: { ...n.data, config } }
+    return { ...data, config }
   })
   markDirty()
 }
@@ -772,7 +847,10 @@ const onConfigJsonInput = (nodeId: string, raw: string) => {
       return
     }
     configJsonError.value = ''
-    nodes.value = nodes.value.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, config: parsed } } : n)
+    updateNodeData(nodeId, (data) => ({
+      ...data,
+      config: parsed as Record<string, unknown>,
+    }))
     markDirty()
   } catch {
     configJsonError.value = 'JSON 语法错误'
@@ -802,14 +880,17 @@ const removeEdge = (edgeId: string) => {
 }
 
 const buildDsl = (): Record<string, unknown> => {
-  const dslNodes: WorkflowNode[] = nodes.value.map((n) => ({
-    id: n.id,
-    type: n.data.nodeType || 'action',
-    name: n.data.label || n.id,
-    config: n.data.config || {},
-    timeout: n.data.timeout || 30,
-    retry_policy: n.data.retryPolicy || makeDefaultRetryPolicy(),
-  }))
+  const dslNodes: WorkflowNode[] = nodes.value.map((n) => {
+    const data = getEditorNodeData(n)
+    return {
+      id: n.id,
+      type: data.nodeType || 'action',
+      name: data.label || n.id,
+      config: data.config,
+      timeout: data.timeout || 30,
+      retry_policy: data.retryPolicy,
+    }
+  })
 
   const dslEdges: WorkflowEdge[] = edges.value.map((e) => ({
     from: e.source,
@@ -1058,7 +1139,7 @@ const loadDslToCanvas = (dsl: Record<string, unknown>) => {
   const rawNodes = Array.isArray(dslObj.nodes) ? dslObj.nodes : []
   const rawEdges = Array.isArray(dslObj.edges) ? dslObj.edges : []
 
-  nodes.value = rawNodes.map((n: any, i: number) => {
+  nodes.value = rawNodes.map((n: any, i: number): EditorFlowNode => {
     const pos = canvasPositions.get(n.id) || layoutPosition(i, rawNodes.length)
     return {
       id: n.id || `node_${nanoid(6)}`,
@@ -1068,19 +1149,19 @@ const loadDslToCanvas = (dsl: Record<string, unknown>) => {
         label: n.name || n.id || `Node ${i + 1}`,
         nodeType: n.type || 'action',
         timeout: n.timeout || 30,
-        retryPolicy: n.retry_policy || makeDefaultRetryPolicy(),
-        config: n.config || {},
+        retryPolicy: normalizeRetryPolicy(n.retry_policy),
+        config: normalizeNodeConfig(n.config),
       },
     }
   })
 
-  edges.value = rawEdges.map((e: any) => ({
+  edges.value = rawEdges.map((e: any): EditorFlowEdge => ({
     id: `edge_${nanoid(6)}`,
     source: e.from || '',
     target: e.to || '',
     label: e.condition || 'true',
     data: { condition: e.condition || 'true', priority: e.priority || 0 },
-    markerEnd: 'arrowclosed',
+    markerEnd: MarkerType.ArrowClosed,
     style: { stroke: 'rgba(148,163,184,0.72)', strokeWidth: 1.2 },
     labelStyle: { fill: 'rgba(226,232,240,0.92)', fontSize: '11px', fontWeight: 500 },
     labelBgStyle: { fill: 'rgba(15,23,42,0.82)', fillOpacity: 0.95 },

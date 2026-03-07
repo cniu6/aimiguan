@@ -865,8 +865,6 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 
-const Radar = Zap
-
 // ── HFish 状态 ──
 const hfishConfig = ref<HFishConfig>({ host_port: null, api_base_url: null, sync_interval: 60, enabled: false })
 const hfishForm = reactive({ host_port: '', api_base_url: '', api_key: '', sync_interval: 60, enabled: false })
@@ -1474,7 +1472,7 @@ const loadChannels = async () => {
   try {
     const res: any = await apiClient.get('/push/channels')
     const data = res?.data ?? res
-    const list = Array.isArray(data) ? data : (Array.isArray(data?.items) ? data.items : [])
+    const list: unknown[] = Array.isArray(data) ? data : (Array.isArray(data?.items) ? data.items : [])
     channels.value = list
       .map(normalizePushChannel)
       .filter((item): item is PushChannel => isRenderablePushChannel(item))
@@ -1578,7 +1576,7 @@ const loadDevices = async () => {
   devicesLoading.value = true
   try {
     const data = await deviceApi.list()
-    const list = Array.isArray(data) ? data : (Array.isArray((data as any)?.items) ? (data as any).items : [])
+    const list: unknown[] = Array.isArray(data) ? data : (Array.isArray((data as any)?.items) ? (data as any).items : [])
     devices.value = list
       .map(normalizeDevice)
       .filter((item): item is DeviceInfo => isRenderableDevice(item))

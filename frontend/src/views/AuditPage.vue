@@ -3,12 +3,12 @@
     <div class="mx-auto max-w-[1400px] space-y-6">
       <div class="flex items-center justify-between">
         <div class="space-y-1">
-          <h1 class="text-2xl font-semibold">Audit Center</h1>
-          <p class="text-sm text-muted-foreground">Query key operations and trace by trace_id.</p>
+          <h1 class="text-2xl font-semibold">审计中心</h1>
+          <p class="text-sm text-muted-foreground">查询关键操作记录，支持按 trace_id 追踪。</p>
         </div>
         <Button variant="outline" size="sm" class="cursor-pointer gap-1.5" :disabled="loading" @click="loadLogs">
           <RefreshCw class="size-3.5" :class="loading ? 'animate-spin' : ''" />
-          Refresh
+          刷新
         </Button>
       </div>
 
@@ -17,36 +17,36 @@
           <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <input
               v-model="query.trace_id"
-              placeholder="trace_id"
+              placeholder="追踪ID"
               class="h-8 w-full rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             />
             <input
               v-model="query.actor"
-              placeholder="actor"
+              placeholder="操作人"
               class="h-8 w-full rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             />
             <input
               v-model="query.action"
-              placeholder="action"
+              placeholder="操作类型"
               class="h-8 w-full rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             />
             <select
               v-model="query.result"
               class="h-8 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             >
-              <option value="">all results</option>
-              <option value="success">success</option>
-              <option value="failed">failed</option>
+              <option value="">全部结果</option>
+              <option value="success">成功</option>
+              <option value="failed">失败</option>
             </select>
-            <Button size="sm" class="cursor-pointer h-8" @click="search">Search</Button>
+            <Button size="sm" class="cursor-pointer h-8" @click="search">搜索</Button>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader class="pb-2 flex-row items-center justify-between">
-          <CardTitle class="text-base">Audit Logs</CardTitle>
-          <span class="text-xs text-muted-foreground">total {{ total }}</span>
+          <CardTitle class="text-base">审计日志</CardTitle>
+          <span class="text-xs text-muted-foreground">共 {{ total }} 条</span>
         </CardHeader>
         <CardContent class="p-0">
           <div v-if="loading" class="p-4 space-y-2">
@@ -54,19 +54,19 @@
           </div>
 
           <div v-else-if="logs.length === 0" class="py-12 text-center text-sm text-muted-foreground">
-            No audit logs.
+            暂无审计日志。
           </div>
 
           <div v-else class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead>
                 <tr class="border-b border-border bg-muted/30">
-                  <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground w-36">time</th>
-                  <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground w-24">actor</th>
-                  <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">action</th>
-                  <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground w-32">target</th>
-                  <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground w-16">result</th>
-                  <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground w-36">trace_id</th>
+                  <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground w-36">时间</th>
+                  <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground w-24">操作人</th>
+                  <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground">操作</th>
+                  <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground w-32">目标</th>
+                  <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground w-16">结果</th>
+                  <th class="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground w-36">追踪ID</th>
                 </tr>
               </thead>
               <tbody>
@@ -99,21 +99,21 @@
           </div>
 
           <div v-if="selectedRow" class="border-t border-border bg-muted/10 p-4 space-y-2">
-            <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">details</p>
+            <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">详细信息</p>
             <div class="grid gap-2 sm:grid-cols-2 text-xs">
-              <div><span class="text-muted-foreground">trace_id: </span><code>{{ selectedRow.trace_id }}</code></div>
-              <div><span class="text-muted-foreground">target_type: </span>{{ selectedRow.target_type || '-' }}</div>
-              <div><span class="text-muted-foreground">target_ip: </span>{{ selectedRow.target_ip || '-' }}</div>
-              <div><span class="text-muted-foreground">error: </span>{{ selectedRow.error_message || '-' }}</div>
-              <div class="sm:col-span-2"><span class="text-muted-foreground">reason: </span>{{ selectedRow.reason || '-' }}</div>
+              <div><span class="text-muted-foreground">追踪ID: </span><code>{{ selectedRow.trace_id }}</code></div>
+              <div><span class="text-muted-foreground">目标类型: </span>{{ selectedRow.target_type || '-' }}</div>
+              <div><span class="text-muted-foreground">目标IP: </span>{{ selectedRow.target_ip || '-' }}</div>
+              <div><span class="text-muted-foreground">错误信息: </span>{{ selectedRow.error_message || '-' }}</div>
+              <div class="sm:col-span-2"><span class="text-muted-foreground">原因: </span>{{ selectedRow.reason || '-' }}</div>
             </div>
           </div>
 
           <div v-if="totalPages > 1" class="flex items-center justify-between px-4 py-3 border-t border-border">
-            <span class="text-xs text-muted-foreground">page {{ page }} / {{ totalPages }}</span>
+            <span class="text-xs text-muted-foreground">第 {{ page }} / {{ totalPages }} 页</span>
             <div class="flex gap-1">
-              <Button variant="outline" size="sm" class="h-7 text-xs cursor-pointer" :disabled="page <= 1" @click="changePage(page - 1)">Prev</Button>
-              <Button variant="outline" size="sm" class="h-7 text-xs cursor-pointer" :disabled="page >= totalPages" @click="changePage(page + 1)">Next</Button>
+              <Button variant="outline" size="sm" class="h-7 text-xs cursor-pointer" :disabled="page <= 1" @click="changePage(page - 1)">上一页</Button>
+              <Button variant="outline" size="sm" class="h-7 text-xs cursor-pointer" :disabled="page >= totalPages" @click="changePage(page + 1)">下一页</Button>
             </div>
           </div>
         </CardContent>
