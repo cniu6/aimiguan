@@ -344,21 +344,11 @@
         ref="contentRef"
         class="min-w-0 flex-1 overflow-y-auto bg-background/50"
       >
-        <div
-          class="relative h-full transition-[opacity,transform] duration-260 ease-out"
-          :class="isRouteChanging ? 'content-loading' : 'content-ready'"
-        >
-          <div
-            v-if="isRouteChanging"
-            class="pointer-events-none absolute inset-0 z-20 route-content-overlay"
-            :style="{ opacity: String(Math.min(0.16, Math.max(0.06, 1 - routeProgress))) }"
-          />
+        <div class="relative h-full">
           <router-view v-slot="{ Component, route: childRoute }">
-            <Transition name="fade-slide" mode="out-in" appear>
-              <div :key="childRoute.fullPath" class="route-page h-full">
-                <component :is="Component" />
-              </div>
-            </Transition>
+            <div :key="childRoute.fullPath" class="h-full">
+              <component :is="Component" />
+            </div>
           </router-view>
         </div>
       </main>
@@ -770,7 +760,7 @@ const runModeTransition = async (targetMode: ModeKey) => {
 
   const isProbe = targetMode === 'probe'
   const accentColor = isProbe ? '#f97316' : '#3b82f6' // Orange for Probe, Blue for Defense
-  transitionTitleText.value = isProbe ? 'PROBE' : 'DEFENSE'
+  transitionTitleText.value = isProbe ? '主动探测' : '防御坚守'
 
   if (modeTimeline) {
     modeTimeline.kill()
