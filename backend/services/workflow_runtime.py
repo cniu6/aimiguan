@@ -74,6 +74,18 @@ class WorkflowRuntimeResult:
 
 
 @dataclass(slots=True)
+class WorkflowReplayResult:
+    source_run_id: int
+    source_run_state: str
+    mode: str
+    resumed_from_node_id: Optional[str]
+    replay_run: WorkflowRuntimeResult
+    workflow_key: str
+    workflow_version: int
+    debug_report: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
 class NodeExecutionResult:
     state: str
     output: dict[str, Any] = field(default_factory=dict)
@@ -113,6 +125,19 @@ def _json_loads(value: str | None) -> dict[str, Any]:
         return {}
     data = json.loads(value)
     return data if isinstance(data, dict) else {}
+
+
+def _payload_summary(value: str | None, limit: int = 180) -> str | None:
+    if not value:
+        return None
+    try:
+        parsed = json.loads(value)
+        text = json.dumps(parsed, ensure_ascii=False, default=str)
+    except Exception:
+        text = str(value)
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 3]}..."
 
 
 def _normalize_condition(condition: str) -> str:
@@ -268,6 +293,47 @@ def _build_initial_context(
         context.setdefault("event", dict(event))
         for key, value in event.items():
             context.setdefault(str(key), value)
+    return context
+
+
+def _build_runtime_context(
+    *,
+    input_payload: Mapping[str, Any],
+    trace_id: str,
+    workflow_key: str,
+    workflow_version: int,
+    trigger_source: str,
+    trigger_ref: str | None,
+    initial_context: Optional[Mapping[str, Any]] = None,
+) -> dict[str, Any]:
+    if initial_context is None:
+        return _build_initial_context(
+            input_payload=input_payload,
+            trace_id=trace_id,
+            workflow_key=workflow_key,
+            workflow_version=workflow_version,
+            trigger_source=trigger_source,
+            trigger_ref=trigger_ref,
+        )
+
+    context = dict(initial_context)
+    existing_input = context.get("input")
+    merged_input = dict(existing_input) if isinstance(existing_input, Mapping) else {}
+    merged_input.update(dict(input_payload))
+    context["input"] = merged_input
+    context.pop("last_error", None)
+    context["trace_id"] = trace_id
+    context["workflow_key"] = workflow_key
+    context["workflow_version"] = workflow_version
+    context["trigger_source"] = trigger_source
+    context["trigger_ref"] = trigger_ref
+    for key, value in merged_input.items():
+        context[str(key)] = value
+    event = merged_input.get("event")
+    if isinstance(event, Mapping):
+        context["event"] = dict(event)
+        for key, value in event.items():
+            context[str(key)] = value
     return context
 
 
@@ -682,7 +748,139 @@ def _update_run(
         workflow_run.started_at = now
     if ended:
         workflow_run.ended_at = now
+        workflow_run.output_payload = _json_dumps(context)
     db.commit()
+
+
+def _load_workflow_run_bundle(
+    db: Session,
+    *,
+    run_id: int,
+) -> tuple[WorkflowRun, WorkflowDefinition, WorkflowVersion, CompiledWorkflow]:
+    row = (
+        db.query(WorkflowRun, WorkflowDefinition, WorkflowVersion)
+        .join(WorkflowDefinition, WorkflowDefinition.id == WorkflowRun.workflow_id)
+        .join(WorkflowVersion, WorkflowVersion.id == WorkflowRun.workflow_version_id)
+        .filter(WorkflowRun.id == run_id)
+        .first()
+    )
+    if row is None:
+        raise WorkflowRuntimeError(f"workflow run not found: {run_id}")
+    run, definition, version = row
+    compiled = compile_workflow(_json_loads(version.dsl_json))
+    return run, definition, version, compiled
+
+
+def _load_step_runs(db: Session, *, run_id: int) -> list[WorkflowStepRun]:
+    return (
+        db.query(WorkflowStepRun)
+        .filter(WorkflowStepRun.workflow_run_id == run_id)
+        .order_by(WorkflowStepRun.id.asc())
+        .all()
+    )
+
+
+def _resolve_resume_step(steps: list[WorkflowStepRun]) -> WorkflowStepRun | None:
+    for step in reversed(steps):
+        if str(step.step_state or "").upper() in {WorkflowRunState.FAILED.value, WorkflowRunState.MANUAL_REQUIRED.value}:
+            return step
+    return None
+
+
+def _debug_recommendations(step: WorkflowStepRun | None, error_message: str | None) -> list[str]:
+    message = str(error_message or "").lower()
+    recommendations: list[str] = []
+    if "timeout" in message:
+        recommendations.append("检查外部依赖可达性，并视情况提高节点 timeout / retry_policy。")
+    if "requires ip" in message:
+        recommendations.append("补齐 `ip` 参数后再重放，必要时使用参数覆盖修复上下文。")
+    if step is not None and step.node_type == "manual_approval":
+        recommendations.append("在覆盖参数中补充 `approval_decisions.<node_id>` 后执行失败节点续跑。")
+    if step is not None and step.node_type == "mcp_action":
+        recommendations.append("确认 MCP/FW 连通性、device_id 和操作者身份，再尝试继续执行。")
+    if step is not None and step.node_type.startswith("scan"):
+        recommendations.append("核对资产目标、扫描 profile、扫描器执行环境与结果目录权限。")
+    if not recommendations:
+        recommendations.append("可先查看失败节点输入摘要，再用参数覆盖执行完整重放或从失败节点继续。")
+    return recommendations
+
+
+def build_workflow_debug_report(
+    db: Session,
+    *,
+    run_id: int,
+    mode: str = "inspect",
+    overrides: Optional[Mapping[str, Any]] = None,
+    resumed_from_node_id: str | None = None,
+    replay_run: Optional[WorkflowRuntimeResult] = None,
+) -> dict[str, Any]:
+    run, definition, version, _compiled = _load_workflow_run_bundle(db, run_id=run_id)
+    steps = _load_step_runs(db, run_id=run_id)
+    failed_step = _resolve_resume_step(steps)
+    context = _json_loads(run.context_json)
+    input_payload = _json_loads(run.input_payload)
+    last_error = str(context.get("last_error") or getattr(failed_step, "error_message", "") or "") or None
+    return {
+        "source_run": {
+            "run_id": run.id,
+            "workflow_id": definition.id,
+            "workflow_key": definition.workflow_key,
+            "workflow_name": definition.name,
+            "workflow_version": version.version,
+            "run_state": run.run_state,
+            "trace_id": run.trace_id,
+            "trigger_source": run.trigger_source,
+            "trigger_ref": run.trigger_ref,
+        },
+        "resume_candidate": {
+            "node_id": getattr(failed_step, "node_id", None),
+            "node_type": getattr(failed_step, "node_type", None),
+            "step_state": getattr(failed_step, "step_state", None),
+            "attempt": getattr(failed_step, "attempt", None),
+            "error_message": getattr(failed_step, "error_message", None),
+        },
+        "replay_hints": {
+            "mode": mode,
+            "resume_supported": failed_step is not None,
+            "resumed_from_node_id": resumed_from_node_id,
+            "override_keys": sorted(str(key) for key in (overrides or {}).keys()),
+            "input_keys": sorted(str(key) for key in input_payload.keys()),
+            "last_error": last_error,
+        },
+        "recommendations": _debug_recommendations(failed_step, last_error),
+        "step_failures": [
+            {
+                "node_id": step.node_id,
+                "node_type": step.node_type,
+                "step_state": step.step_state,
+                "attempt": step.attempt,
+                "error_message": step.error_message,
+                "started_at": step.started_at.isoformat() if step.started_at is not None else None,
+                "ended_at": step.ended_at.isoformat() if step.ended_at is not None else None,
+            }
+            for step in steps
+            if str(step.step_state or "").upper() in {WorkflowRunState.FAILED.value, WorkflowRunState.MANUAL_REQUIRED.value}
+        ],
+        "latest_steps": [
+            {
+                "node_id": step.node_id,
+                "node_type": step.node_type,
+                "step_state": step.step_state,
+                "attempt": step.attempt,
+                "input_summary": _payload_summary(step.input_payload),
+                "output_summary": _payload_summary(step.output_payload),
+            }
+            for step in steps[-5:]
+        ],
+        "replay_result": None
+        if replay_run is None
+        else {
+            "run_id": replay_run.run_id,
+            "run_state": replay_run.run_state,
+            "trace_id": replay_run.trace_id,
+            "reused_existing": replay_run.reused_existing,
+        },
+    }
 
 
 def _create_step_run(
@@ -846,32 +1044,37 @@ async def run_compiled_workflow(
     actor: str = "system",
     trace_id: str | None = None,
     adapters: Optional[Mapping[str, WorkflowAdapter]] = None,
+    start_node_id: str | None = None,
+    initial_context: Optional[Mapping[str, Any]] = None,
+    force_new_run: bool = False,
 ) -> WorkflowRuntimeResult:
     final_trace_id = trace_id or str(input_payload.get("trace_id") or uuid.uuid4())
-    existing = _find_existing_run(
-        db,
-        workflow_id=definition.id,
-        trigger_source=trigger_source,
-        trigger_ref=trigger_ref,
-    )
-    if existing is not None:
-        return WorkflowRuntimeResult(
-            run_id=existing.id,
-            workflow_id=existing.workflow_id,
-            workflow_version_id=existing.workflow_version_id,
-            run_state=existing.run_state,
-            trace_id=existing.trace_id,
-            reused_existing=True,
-            context=_json_loads(existing.context_json),
+    if not force_new_run:
+        existing = _find_existing_run(
+            db,
+            workflow_id=definition.id,
+            trigger_source=trigger_source,
+            trigger_ref=trigger_ref,
         )
+        if existing is not None:
+            return WorkflowRuntimeResult(
+                run_id=existing.id,
+                workflow_id=existing.workflow_id,
+                workflow_version_id=existing.workflow_version_id,
+                run_state=existing.run_state,
+                trace_id=existing.trace_id,
+                reused_existing=True,
+                context=_json_loads(existing.context_json),
+            )
 
-    context = _build_initial_context(
+    context = _build_runtime_context(
         input_payload=input_payload,
         trace_id=final_trace_id,
         workflow_key=compiled.workflow_key,
         workflow_version=compiled.version,
         trigger_source=trigger_source,
         trigger_ref=trigger_ref,
+        initial_context=initial_context,
     )
     workflow_run = WorkflowRun(
         workflow_id=definition.id,
@@ -889,7 +1092,9 @@ async def run_compiled_workflow(
     db.commit()
     db.refresh(workflow_run)
 
-    current_node_id = compiled.start_node_id
+    current_node_id = start_node_id or compiled.start_node_id
+    if current_node_id not in compiled.nodes:
+        raise WorkflowRuntimeError(f"invalid start node: {current_node_id}")
     _update_run(db, workflow_run, state=WorkflowRunState.RUNNING.value, context=context)
     try:
         while current_node_id is not None:
@@ -940,6 +1145,73 @@ async def run_compiled_workflow(
             trace_id=final_trace_id,
             context=dict(context),
         )
+
+
+async def replay_workflow_run(
+    db: Session,
+    *,
+    run_id: int,
+    mode: str = "full",
+    overrides: Optional[Mapping[str, Any]] = None,
+    actor: str = "system",
+    trace_id: str | None = None,
+    adapters: Optional[Mapping[str, WorkflowAdapter]] = None,
+) -> WorkflowReplayResult:
+    source_run, definition, version, compiled = _load_workflow_run_bundle(db, run_id=run_id)
+    source_input = _json_loads(source_run.input_payload)
+    merged_input = dict(source_input)
+    merged_input.update(dict(overrides or {}))
+    replay_suffix = uuid.uuid4().hex[:8]
+    resumed_from_node_id: str | None = None
+    initial_context: Optional[Mapping[str, Any]] = None
+    trigger_ref_prefix = "replay"
+    if mode == "resume_from_failure":
+        steps = _load_step_runs(db, run_id=run_id)
+        resume_step = _resolve_resume_step(steps)
+        if resume_step is None:
+            raise WorkflowRuntimeError(f"workflow run {run_id} has no failed step to resume")
+        resumed_from_node_id = resume_step.node_id
+        initial_context = dict(_json_loads(source_run.context_json))
+        initial_context["replay_of_run_id"] = run_id
+        initial_context["replay_mode"] = mode
+        initial_context["resume_from_node_id"] = resumed_from_node_id
+        trigger_ref_prefix = "resume"
+    else:
+        mode = "full"
+
+    replay_run = await run_compiled_workflow(
+        db,
+        definition=definition,
+        version=version,
+        compiled=compiled,
+        input_payload=merged_input,
+        trigger_source="workflow_replay",
+        trigger_ref=f"{trigger_ref_prefix}:{run_id}:{replay_suffix}",
+        actor=actor,
+        trace_id=trace_id,
+        adapters=adapters,
+        start_node_id=resumed_from_node_id,
+        initial_context=initial_context,
+        force_new_run=True,
+    )
+    debug_report = build_workflow_debug_report(
+        db,
+        run_id=run_id,
+        mode=mode,
+        overrides=overrides,
+        resumed_from_node_id=resumed_from_node_id,
+        replay_run=replay_run,
+    )
+    return WorkflowReplayResult(
+        source_run_id=source_run.id,
+        source_run_state=source_run.run_state,
+        mode=mode,
+        resumed_from_node_id=resumed_from_node_id,
+        replay_run=replay_run,
+        workflow_key=definition.workflow_key,
+        workflow_version=version.version,
+        debug_report=debug_report,
+    )
 
 
 async def run_published_workflow(

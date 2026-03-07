@@ -183,6 +183,35 @@
             <CardTitle class="text-base">节点时间线</CardTitle>
             <div class="flex items-center gap-2">
               <Button
+                variant="outline"
+                size="sm"
+                class="h-8 cursor-pointer"
+                :disabled="debugLoading || !selectedRunId"
+                @click="reloadDebugReport"
+              >
+                {{ debugLoading ? '生成中...' : '调试报告' }}
+              </Button>
+              <Button
+                v-if="canReplayWorkflow"
+                variant="outline"
+                size="sm"
+                class="h-8 cursor-pointer"
+                :disabled="replayLoading || !selectedRunId"
+                @click="runReplay('full')"
+              >
+                {{ replayLoading ? '执行中...' : '完整重放' }}
+              </Button>
+              <Button
+                v-if="canReplayWorkflow"
+                variant="outline"
+                size="sm"
+                class="h-8 cursor-pointer"
+                :disabled="replayLoading || !selectedRunId || !debugReport?.replay_hints.resume_supported"
+                @click="runReplay('resume_from_failure')"
+              >
+                从失败节点继续
+              </Button>
+              <Button
                 v-if="detail?.run.trace_id"
                 variant="outline"
                 size="sm"
@@ -205,6 +234,14 @@
           <CardContent class="space-y-4">
             <div v-if="detailErrorText" class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
               {{ detailErrorText }}
+            </div>
+
+            <div v-if="replayErrorText" class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              {{ replayErrorText }}
+            </div>
+
+            <div v-if="replayFeedback" class="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+              {{ replayFeedback }}
             </div>
 
             <div v-if="detailLoading" class="space-y-3">
@@ -256,6 +293,22 @@
                 </div>
               </div>
 
+              <div v-if="canReplayWorkflow" class="rounded-lg border border-border/70 bg-card/80 p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-medium text-foreground">参数覆盖 / 手工修复</p>
+                    <p class="text-xs text-muted-foreground">输入 JSON 后可执行完整重放，或在失败节点基础上继续执行。</p>
+                  </div>
+                  <span class="text-xs text-muted-foreground">JSON Object</span>
+                </div>
+                <textarea
+                  v-model="overridesText"
+                  rows="6"
+                  class="mt-3 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  placeholder='{"ip":"8.8.8.8"}'
+                />
+              </div>
+
               <div class="space-y-3">
                 <div
                   v-for="step in detail.steps"
@@ -300,6 +353,74 @@
                   </div>
                 </div>
               </div>
+
+              <div class="rounded-lg border border-border/70 bg-card/80 p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-medium text-foreground">调试报告</p>
+                    <p class="text-xs text-muted-foreground">失败原因、推荐修复动作、最近节点摘要和续跑候选节点。</p>
+                  </div>
+                  <Badge class="text-[10px]" :class="stateClass(debugReport?.source_run.run_state)">
+                    {{ debugReport?.source_run.run_state || 'UNKNOWN' }}
+                  </Badge>
+                </div>
+
+                <div v-if="debugLoading" class="mt-3 space-y-2">
+                  <Skeleton class="h-20 w-full rounded-md" />
+                  <Skeleton class="h-24 w-full rounded-md" />
+                </div>
+
+                <div v-else-if="!debugReport" class="mt-3 rounded-md border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+                  暂无调试报告，点击上方按钮生成。
+                </div>
+
+                <div v-else class="mt-4 space-y-4">
+                  <div class="grid gap-3 md:grid-cols-2">
+                    <div class="space-y-1">
+                      <p class="text-xs text-muted-foreground">续跑候选节点</p>
+                      <p class="font-mono text-xs text-foreground">{{ debugReport.resume_candidate.node_id || '--' }}</p>
+                      <p class="text-xs text-muted-foreground">{{ debugReport.resume_candidate.node_type || '--' }} / {{ debugReport.resume_candidate.step_state || '--' }}</p>
+                    </div>
+                    <div class="space-y-1">
+                      <p class="text-xs text-muted-foreground">最近错误</p>
+                      <p class="text-xs text-destructive break-all">{{ debugReport.replay_hints.last_error || '--' }}</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p class="text-xs text-muted-foreground">建议修复项</p>
+                    <div class="mt-2 space-y-2">
+                      <div
+                        v-for="(item, index) in debugReport.recommendations"
+                        :key="`${index}-${item}`"
+                        class="rounded-md border border-border/60 bg-muted/10 px-3 py-2 text-xs text-foreground"
+                      >
+                        {{ item }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p class="text-xs text-muted-foreground">最近节点摘要</p>
+                    <div class="mt-2 space-y-2">
+                      <div
+                        v-for="item in debugReport.latest_steps"
+                        :key="`${item.node_id}-${item.attempt}`"
+                        class="rounded-md border border-border/60 bg-muted/10 px-3 py-2"
+                      >
+                        <div class="flex items-center justify-between gap-2">
+                          <p class="font-mono text-xs text-foreground">{{ item.node_id }}</p>
+                          <Badge class="text-[10px]" :class="stateClass(item.step_state)">
+                            {{ item.step_state }}
+                          </Badge>
+                        </div>
+                        <p class="mt-2 text-xs text-muted-foreground">输入：{{ item.input_summary || '--' }}</p>
+                        <p class="mt-1 text-xs text-muted-foreground">输出：{{ item.output_summary || '--' }}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </template>
           </CardContent>
         </Card>
@@ -313,8 +434,10 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   workflowApi,
+  type WorkflowDebugReport,
   type WorkflowRunDetailResult,
   type WorkflowRunItem,
+  type WorkflowReplayPayload,
   type WorkflowRunSummary,
 } from '@/api/workflow'
 import { getRequestErrorMessage } from '@/api/client'
@@ -322,11 +445,13 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { hasPermission } from '@/composables/useAuthz'
 
 const router = useRouter()
 const route = useRoute()
 const pageSize = 12
 const stateOptions = ['QUEUED', 'RUNNING', 'RETRYING', 'SUCCESS', 'FAILED', 'MANUAL_REQUIRED', 'CANCELLED']
+const canReplayWorkflow = computed(() => hasPermission('workflow_edit'))
 
 const emptySummary = (): WorkflowRunSummary => ({
   total_runs: 0,
@@ -342,14 +467,20 @@ const emptySummary = (): WorkflowRunSummary => ({
 
 const loading = ref(false)
 const detailLoading = ref(false)
+const debugLoading = ref(false)
+const replayLoading = ref(false)
 const errorText = ref('')
 const detailErrorText = ref('')
+const replayErrorText = ref('')
+const replayFeedback = ref('')
 const page = ref(1)
 const total = ref(0)
 const items = ref<WorkflowRunItem[]>([])
 const summary = ref<WorkflowRunSummary>(emptySummary())
 const selectedRunId = ref<number | null>(null)
 const detail = ref<WorkflowRunDetailResult | null>(null)
+const debugReport = ref<WorkflowDebugReport | null>(null)
+const overridesText = ref('{}')
 
 const filters = reactive({
   keyword: '',
@@ -390,13 +521,38 @@ const jumpToAudit = (traceId?: string | null) => {
   router.push({ path: '/audit', query: { trace_id: trace } })
 }
 
+const parseOverrides = (): Record<string, unknown> => {
+  const text = overridesText.value.trim()
+  if (!text) return {}
+  const parsed = JSON.parse(text)
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('参数覆盖必须是 JSON 对象')
+  }
+  return parsed as Record<string, unknown>
+}
+
+const loadDebugReport = async (runId: number) => {
+  debugLoading.value = true
+  try {
+    debugReport.value = await workflowApi.getWorkflowDebugReport(runId)
+  } catch (error) {
+    debugReport.value = null
+    replayErrorText.value = getRequestErrorMessage(error, '加载调试报告失败')
+  } finally {
+    debugLoading.value = false
+  }
+}
+
 const loadDetail = async (runId: number) => {
   detailLoading.value = true
   detailErrorText.value = ''
+  replayErrorText.value = ''
   try {
     detail.value = await workflowApi.getWorkflowRunDetail(runId)
+    await loadDebugReport(runId)
   } catch (error) {
     detail.value = null
+    debugReport.value = null
     detailErrorText.value = getRequestErrorMessage(error, '加载运行详情失败')
   } finally {
     detailLoading.value = false
@@ -422,6 +578,7 @@ const syncSelection = async () => {
   }
   selectedRunId.value = null
   detail.value = null
+  debugReport.value = null
 }
 
 const loadRuns = async () => {
@@ -447,6 +604,7 @@ const loadRuns = async () => {
     total.value = 0
     summary.value = emptySummary()
     detail.value = null
+    debugReport.value = null
     errorText.value = getRequestErrorMessage(error, '加载运行监控失败')
   } finally {
     loading.value = false
@@ -456,6 +614,32 @@ const loadRuns = async () => {
 const reloadDetail = async () => {
   if (!selectedRunId.value) return
   await loadDetail(selectedRunId.value)
+}
+
+const reloadDebugReport = async () => {
+  if (!selectedRunId.value) return
+  replayErrorText.value = ''
+  await loadDebugReport(selectedRunId.value)
+}
+
+const runReplay = async (mode: WorkflowReplayPayload['mode']) => {
+  if (!selectedRunId.value) return
+  replayLoading.value = true
+  replayErrorText.value = ''
+  replayFeedback.value = ''
+  try {
+    const overrides = parseOverrides()
+    const result = await workflowApi.replayWorkflowRun(selectedRunId.value, { mode, overrides })
+    replayFeedback.value = `已创建回放 run #${result.replay_run_id}，状态：${result.replay_run_state}`
+    debugReport.value = result.debug_report
+    page.value = 1
+    await loadRuns()
+    await selectRun(result.replay_run_id)
+  } catch (error) {
+    replayErrorText.value = getRequestErrorMessage(error, '执行回放失败')
+  } finally {
+    replayLoading.value = false
+  }
 }
 
 const search = () => {

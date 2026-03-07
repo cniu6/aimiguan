@@ -251,6 +251,77 @@ export interface WorkflowRunDetailResult {
   steps: WorkflowRunStepItem[]
 }
 
+export interface WorkflowDebugStepItem {
+  node_id: string
+  node_type: string
+  step_state: string
+  attempt: number | null
+  error_message?: string | null
+  input_summary?: string | null
+  output_summary?: string | null
+  started_at?: string | null
+  ended_at?: string | null
+}
+
+export interface WorkflowDebugReport {
+  source_run: {
+    run_id: number
+    workflow_id: number
+    workflow_key: string
+    workflow_name: string
+    workflow_version: number
+    run_state: string
+    trace_id: string | null
+    trigger_source: string | null
+    trigger_ref: string | null
+  }
+  resume_candidate: {
+    node_id: string | null
+    node_type: string | null
+    step_state: string | null
+    attempt: number | null
+    error_message: string | null
+  }
+  replay_hints: {
+    mode: string
+    resume_supported: boolean
+    resumed_from_node_id: string | null
+    override_keys: string[]
+    input_keys: string[]
+    last_error: string | null
+  }
+  recommendations: string[]
+  step_failures: WorkflowDebugStepItem[]
+  latest_steps: WorkflowDebugStepItem[]
+  replay_result: {
+    run_id: number
+    run_state: string
+    trace_id: string | null
+    reused_existing: boolean
+  } | null
+}
+
+export interface WorkflowReplayPayload {
+  mode: 'full' | 'resume_from_failure'
+  overrides?: Record<string, unknown>
+  trace_id?: string
+}
+
+export interface WorkflowReplayResult {
+  source_run_id: number
+  source_run_state: string
+  workflow_key: string
+  workflow_version: number
+  mode: string
+  resumed_from_node_id: string | null
+  replay_run_id: number
+  replay_run_state: string
+  replay_trace_id: string | null
+  replay_audit_path: string | null
+  reused_existing: boolean
+  debug_report: WorkflowDebugReport
+}
+
 export interface WorkflowRunListParams {
   page?: number
   page_size?: number
@@ -271,6 +342,8 @@ const toStringOrNull = (value: unknown): string | null => {
   if (typeof value === 'string') return value
   return null
 }
+
+const toBoolean = (value: unknown): boolean => value === true
 
 const normalizeValidationIssue = (value: unknown): WorkflowValidateIssue => {
   const record = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>
@@ -358,6 +431,86 @@ const normalizeRunDetail = (value: unknown): WorkflowRunDetail => {
     input_summary: toStringOrNull(record.input_summary),
     output_summary: toStringOrNull(record.output_summary),
     context_summary: toStringOrNull(record.context_summary),
+  }
+}
+
+const normalizeDebugStep = (value: unknown): WorkflowDebugStepItem => {
+  const record = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>
+  return {
+    node_id: typeof record.node_id === 'string' ? record.node_id : '',
+    node_type: typeof record.node_type === 'string' ? record.node_type : '',
+    step_state: typeof record.step_state === 'string' ? record.step_state : 'UNKNOWN',
+    attempt: record.attempt == null ? null : toNumber(record.attempt, 0),
+    error_message: toStringOrNull(record.error_message),
+    input_summary: toStringOrNull(record.input_summary),
+    output_summary: toStringOrNull(record.output_summary),
+    started_at: toStringOrNull(record.started_at),
+    ended_at: toStringOrNull(record.ended_at),
+  }
+}
+
+const normalizeDebugReport = (value: unknown): WorkflowDebugReport => {
+  const record = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>
+  const sourceRun = (record.source_run && typeof record.source_run === 'object' ? record.source_run : {}) as Record<string, unknown>
+  const resumeCandidate = (record.resume_candidate && typeof record.resume_candidate === 'object' ? record.resume_candidate : {}) as Record<string, unknown>
+  const replayHints = (record.replay_hints && typeof record.replay_hints === 'object' ? record.replay_hints : {}) as Record<string, unknown>
+  const replayResult = (record.replay_result && typeof record.replay_result === 'object' ? record.replay_result : null) as Record<string, unknown> | null
+  return {
+    source_run: {
+      run_id: toNumber(sourceRun.run_id, 0),
+      workflow_id: toNumber(sourceRun.workflow_id, 0),
+      workflow_key: typeof sourceRun.workflow_key === 'string' ? sourceRun.workflow_key : '',
+      workflow_name: typeof sourceRun.workflow_name === 'string' ? sourceRun.workflow_name : '',
+      workflow_version: toNumber(sourceRun.workflow_version, 0),
+      run_state: typeof sourceRun.run_state === 'string' ? sourceRun.run_state : 'UNKNOWN',
+      trace_id: toStringOrNull(sourceRun.trace_id),
+      trigger_source: toStringOrNull(sourceRun.trigger_source),
+      trigger_ref: toStringOrNull(sourceRun.trigger_ref),
+    },
+    resume_candidate: {
+      node_id: toStringOrNull(resumeCandidate.node_id),
+      node_type: toStringOrNull(resumeCandidate.node_type),
+      step_state: toStringOrNull(resumeCandidate.step_state),
+      attempt: resumeCandidate.attempt == null ? null : toNumber(resumeCandidate.attempt, 0),
+      error_message: toStringOrNull(resumeCandidate.error_message),
+    },
+    replay_hints: {
+      mode: typeof replayHints.mode === 'string' ? replayHints.mode : 'inspect',
+      resume_supported: toBoolean(replayHints.resume_supported),
+      resumed_from_node_id: toStringOrNull(replayHints.resumed_from_node_id),
+      override_keys: Array.isArray(replayHints.override_keys) ? replayHints.override_keys.map((item) => String(item)) : [],
+      input_keys: Array.isArray(replayHints.input_keys) ? replayHints.input_keys.map((item) => String(item)) : [],
+      last_error: toStringOrNull(replayHints.last_error),
+    },
+    recommendations: Array.isArray(record.recommendations) ? record.recommendations.map((item) => String(item)) : [],
+    step_failures: Array.isArray(record.step_failures) ? record.step_failures.map((item) => normalizeDebugStep(item)) : [],
+    latest_steps: Array.isArray(record.latest_steps) ? record.latest_steps.map((item) => normalizeDebugStep(item)) : [],
+    replay_result: replayResult == null
+      ? null
+      : {
+          run_id: toNumber(replayResult.run_id, 0),
+          run_state: typeof replayResult.run_state === 'string' ? replayResult.run_state : 'UNKNOWN',
+          trace_id: toStringOrNull(replayResult.trace_id),
+          reused_existing: toBoolean(replayResult.reused_existing),
+        },
+  }
+}
+
+const normalizeReplayResult = (value: unknown): WorkflowReplayResult => {
+  const record = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>
+  return {
+    source_run_id: toNumber(record.source_run_id, 0),
+    source_run_state: typeof record.source_run_state === 'string' ? record.source_run_state : 'UNKNOWN',
+    workflow_key: typeof record.workflow_key === 'string' ? record.workflow_key : '',
+    workflow_version: toNumber(record.workflow_version, 0),
+    mode: typeof record.mode === 'string' ? record.mode : 'full',
+    resumed_from_node_id: toStringOrNull(record.resumed_from_node_id),
+    replay_run_id: toNumber(record.replay_run_id, 0),
+    replay_run_state: typeof record.replay_run_state === 'string' ? record.replay_run_state : 'UNKNOWN',
+    replay_trace_id: toStringOrNull(record.replay_trace_id),
+    replay_audit_path: toStringOrNull(record.replay_audit_path),
+    reused_existing: toBoolean(record.reused_existing),
+    debug_report: normalizeDebugReport(record.debug_report),
   }
 }
 
@@ -518,6 +671,16 @@ export const workflowApi = {
       run: normalizeRunDetail(record.run),
       steps: steps.map((item) => normalizeRunStep(item)),
     }
+  },
+
+  async getWorkflowDebugReport(runId: number): Promise<WorkflowDebugReport> {
+    const data = await apiClient.get(`/workflows/runs/${runId}/debug-report`) as unknown
+    return normalizeDebugReport(data)
+  },
+
+  async replayWorkflowRun(runId: number, payload: WorkflowReplayPayload): Promise<WorkflowReplayResult> {
+    const data = await apiClient.post(`/workflows/runs/${runId}/replay`, payload) as unknown
+    return normalizeReplayResult(data)
   },
 
   async getWorkflowDetail(workflowId: number): Promise<WorkflowDetailResult> {

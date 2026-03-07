@@ -23,6 +23,7 @@ from core.database import (
 from services.audit_service import AuditService
 from services.workflow_release import apply_release_metadata, get_publish_lock
 from services.workflow_dsl import validate_workflow_dsl
+from services.workflow_runtime import WorkflowRuntimeError, build_workflow_debug_report, replay_workflow_run
 from services.workflow_validator import validate_workflow_publish
 
 router = APIRouter(prefix="/api/v1/workflows", tags=["workflow"])
@@ -78,6 +79,12 @@ def _audit_trace_path(trace_id: Optional[str]) -> Optional[str]:
     if not trace:
         return None
     return f"/audit?trace_id={trace}"
+
+
+def _runtime_error_to_http(exc: WorkflowRuntimeError) -> HTTPException:
+    message = str(exc)
+    status_code = 404 if "not found" in message.lower() else 400
+    return HTTPException(status_code=status_code, detail=message)
 
 
 def _apply_run_filters(
@@ -321,6 +328,12 @@ class WorkflowRollbackRequest(BaseModel):
     target_version: int = Field(ge=1)
     reason: str = Field(min_length=1, max_length=500)
     confirmation_text: str = Field(min_length=1, max_length=120)
+    trace_id: Optional[str] = Field(default=None, max_length=128)
+
+
+class WorkflowReplayRequest(BaseModel):
+    mode: str = Field(default="full", pattern="^(full|resume_from_failure)$")
+    overrides: Dict[str, Any] = Field(default_factory=dict)
     trace_id: Optional[str] = Field(default=None, max_length=128)
 
 
@@ -583,6 +596,60 @@ async def get_workflow_run_detail(
                 "context_summary": _payload_summary(run.context_json),
             },
             "steps": [_to_step_item(step) for step in steps],
+        },
+    }
+
+
+@router.get("/runs/{run_id}/debug-report")
+async def get_workflow_run_debug_report(
+    run_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("workflow_view")),
+):
+    try:
+        report = build_workflow_debug_report(db, run_id=run_id)
+    except WorkflowRuntimeError as exc:
+        raise _runtime_error_to_http(exc) from exc
+    return {
+        "code": 0,
+        "data": report,
+    }
+
+
+@router.post("/runs/{run_id}/replay")
+async def replay_workflow_run_api(
+    run_id: int,
+    payload: WorkflowReplayRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permissions("workflow_edit")),
+):
+    try:
+        replay = await replay_workflow_run(
+            db,
+            run_id=run_id,
+            mode=payload.mode,
+            overrides=payload.overrides,
+            actor=str(current_user.username),
+            trace_id=payload.trace_id,
+        )
+    except WorkflowRuntimeError as exc:
+        raise _runtime_error_to_http(exc) from exc
+
+    return {
+        "code": 0,
+        "data": {
+            "source_run_id": replay.source_run_id,
+            "source_run_state": replay.source_run_state,
+            "workflow_key": replay.workflow_key,
+            "workflow_version": replay.workflow_version,
+            "mode": replay.mode,
+            "resumed_from_node_id": replay.resumed_from_node_id,
+            "replay_run_id": replay.replay_run.run_id,
+            "replay_run_state": replay.replay_run.run_state,
+            "replay_trace_id": replay.replay_run.trace_id,
+            "replay_audit_path": _audit_trace_path(replay.replay_run.trace_id),
+            "reused_existing": replay.replay_run.reused_existing,
+            "debug_report": replay.debug_report,
         },
     }
 

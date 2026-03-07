@@ -2423,6 +2423,10 @@ requirements.txt
 - `M4-02 运行监控看板（前后端）`
   - 代码：`backend/api/workflow.py`、`frontend/src/api/workflow.ts`、`frontend/src/views/WorkflowRunsPage.vue`、`frontend/src/router/index.ts`、`frontend/src/components/Layout.vue`、`frontend/src/views/WorkflowCatalogPage.vue`、`tests/test_workflow_m4_02_monitoring_api.py`
   - 验证：`python -m pytest tests/test_workflow_m1_03_api.py tests/test_workflow_m2_02_validator.py tests/test_workflow_m2_03_release_api.py tests/test_workflow_m2_04_rbac.py tests/test_workflow_m3_01_runtime.py tests/test_workflow_m3_02_defense_runtime.py tests/test_workflow_m3_03_rollout.py tests/test_workflow_m4_01_scan_runtime.py tests/test_workflow_m4_02_monitoring_api.py -q`、`cd frontend && npx vite build`
+- `M4-03 回放与调试工具（前后端）`
+  - 代码：`backend/services/workflow_runtime.py`、`backend/api/workflow.py`、`frontend/src/api/workflow.ts`、`frontend/src/views/WorkflowRunsPage.vue`、`tests/test_workflow_m4_03_replay_debug.py`
+  - 验证：`python -m pytest tests/test_workflow_m4_02_monitoring_api.py tests/test_workflow_m4_03_replay_debug.py -q`、`cd frontend && npx vite build`
+
 
 ### 全链路可视化自定义编辑（详细规划）
 
@@ -2593,11 +2597,12 @@ requirements.txt
   - [x] 支持 `trace_id` 全链路跳转。
   - 验收证据：监控页面冒烟测试 + 性能采样。
 
-- [ ] `M4-03` 回放与调试工具（前后端）
-  - [ ] 选择历史 `run_id` 回放。
-  - [ ] 支持“从失败节点继续执行”（可选手工修复参数）。
-  - [ ] 生成调试报告（失败原因、建议修复项）。
-  - 验收证据：回放成功率与调试闭环验证。
+- [x] `M4-03` 回放与调试工具（前后端）
+  - [x] 选择历史 `run_id` 回放。
+  - [x] 支持“从失败节点继续执行”（可选手工修复参数）。
+  - [x] 生成调试报告（失败原因、建议修复项）。
+  - [x] 运行监控页支持参数覆盖、完整重放、失败续跑与调试报告查看。
+  - 验收证据：`tests/test_workflow_m4_03_replay_debug.py` 通过，运行监控页 `npx vite build` 通过。
 
 ##### 横向任务（跨 M1-M4）
 
