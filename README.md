@@ -1,4 +1,4 @@
-# Aimiguan
+﻿# Aimiguan
 
 > 本文档是项目唯一主文档（Single Source of Truth）。
 > 架构、流程、数据模型、实施计划、验证与里程碑均以本 README 为准。
@@ -2390,6 +2390,9 @@ requirements.txt
 - `M1-02 工作流数据表`
   - 代码：`backend/core/database.py`、`sql/mvp_schema.sql`、`backend/migrations/add_workflow_tables_v1.py`、`backend/migrations/rollback_workflow_tables_v1.py`
   - 验证：`pytest -q tests/test_workflow_m1_02.py`
+- `M1-03 工作流基础 API`
+  - 代码：`backend/api/workflow.py`、`backend/main.py`
+  - 验证：`pytest -q tests/test_workflow_m1_03_api.py`
 
 ### 全链路可视化自定义编辑（详细规划）
 
@@ -2479,14 +2482,13 @@ requirements.txt
   - [x] 提供迁移脚本与回滚脚本。
   - 验收证据：迁移脚本可重复执行，回滚可恢复。
 
-- [ ] `M1-03` 提供基础 API（后端）
-  - [ ] `GET /api/v1/workflows` 列表（分页、关键字段过滤）。
-  - [ ] `POST /api/v1/workflows` 创建草稿。
-  - [ ] `GET /api/v1/workflows/{id}` 获取详情（含图结构）。
-  - [ ] `PUT /api/v1/workflows/{id}` 更新草稿（乐观锁 version_tag）。
-  - [ ] `POST /api/v1/workflows/{id}/validate` 校验草稿。
+- [x] `M1-03` 提供基础 API（后端）
+  - [x] `GET /api/v1/workflows` 列表（分页、关键字段过滤）。
+  - [x] `POST /api/v1/workflows` 创建草稿。
+  - [x] `GET /api/v1/workflows/{id}` 获取详情（含图结构）。
+  - [x] `PUT /api/v1/workflows/{id}` 更新草稿（乐观锁 version_tag）。
+  - [x] `POST /api/v1/workflows/{id}/validate` 校验草稿。
   - 验收证据：API 单测 + 契约测试 + 鉴权测试通过。
-
 - [ ] `M1-04` 只读可视化页面（前端）
   - [ ] 新增 `WorkflowCatalogPage`（流程列表）。
   - [ ] 新增 `WorkflowReadonlyGraphPage`（只读画布）。
@@ -4786,3 +4788,4 @@ frontend/
 | v1.0.0 | 2026-02 | 初始版本，防御链路 MVP |
 
 > 本 README 为项目唯一主文档，如有问题请联系维护者。
+

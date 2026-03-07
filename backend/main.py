@@ -13,7 +13,7 @@ from core.response import (
     general_exception_handler,
 )
 from core.middleware import TraceIDMiddleware, RateLimitMiddleware
-from api import auth, defense, scan, report, ai_chat, tts, firewall, system, push, overview, plugin, device
+from api import auth, defense, scan, report, ai_chat, tts, firewall, system, push, overview, plugin, device, workflow
 from services.scheduler_service import scheduler_service
 
 
@@ -111,6 +111,7 @@ app.include_router(push.router)
 app.include_router(overview.router)
 app.include_router(plugin.router)
 app.include_router(device.router)
+app.include_router(workflow.router)
 
 
 @app.get("/api/health")
