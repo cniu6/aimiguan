@@ -2414,6 +2414,9 @@ requirements.txt
 - `M3-02 defense 适配器（后端）`
   - 代码：`backend/api/defense.py`、`backend/services/workflow_runtime.py`、`tests/test_workflow_m3_02_defense_runtime.py`
   - 验证：`python -m pytest tests/test_workflow_m1_03_api.py tests/test_workflow_m2_02_validator.py tests/test_workflow_m2_03_release_api.py tests/test_workflow_m2_04_rbac.py tests/test_workflow_m3_01_runtime.py tests/test_workflow_m3_02_defense_runtime.py -q`
+- `M3-03 灰度接管（后端）`
+  - 代码：`backend/services/workflow_rollout.py`、`backend/api/defense.py`、`tests/test_workflow_m3_03_rollout.py`
+  - 验证：`python -m pytest tests/test_workflow_m1_03_api.py tests/test_workflow_m2_02_validator.py tests/test_workflow_m2_03_release_api.py tests/test_workflow_m2_04_rbac.py tests/test_workflow_m3_01_runtime.py tests/test_workflow_m3_02_defense_runtime.py tests/test_workflow_m3_03_rollout.py -q`
 
 ### 全链路可视化自定义编辑（详细规划）
 
@@ -2563,11 +2566,11 @@ requirements.txt
   - [x] 失败分类：可重试/不可重试/人工介入。
   - 验收证据：从 HFish 入站到执行完成全链路集成测试。
 
-- [ ] `M3-03` 灰度接管（后端）
-  - [ ] 引入流量分流开关：`legacy_only/workflow_gray/workflow_full`。
-  - [ ] 支持按百分比灰度（10%→50%→100%）。
-  - [ ] 灰度期间双写关键审计指标（可选）。
-  - [ ] 一键回退到 legacy 链路。
+- [x] `M3-03` 灰度接管（后端）
+  - [x] 引入流量分流开关：`legacy_only/workflow_gray/workflow_full`。
+  - [x] 支持按百分比灰度（10%→50%→100%）。
+  - [x] 灰度期间双写关键审计指标（可选）。
+  - [x] 一键回退到 legacy 链路。
   - 验收证据：灰度回归报告 + 回退演练记录。
 
 ##### M4：scan 链路接入 + 运行监控 + 回放调试（第 4 周）

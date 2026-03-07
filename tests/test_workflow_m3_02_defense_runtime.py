@@ -6,6 +6,7 @@ from api import defense as defense_module
 from core.database import ExecutionTask, ThreatEvent, WorkflowRun, WorkflowStepRun
 from services import workflow_runtime as workflow_runtime_module
 from services.workflow_dsl import load_default_defense_workflow
+from services.workflow_rollout import set_defense_workflow_rollout
 
 
 def _auth(token: str) -> dict:
@@ -70,6 +71,16 @@ def _wait_task_state(test_db, event_id: int, expected: set[str], timeout_seconds
 def test_approve_event_uses_runtime_and_finishes_success(monkeypatch, client, admin_token, test_db):
     workflow_key = _create_published_defense_workflow(client, admin_token)
     monkeypatch.setattr(defense_module, "_get_defense_runtime_workflow_key", lambda: workflow_key)
+    set_defense_workflow_rollout(
+        test_db,
+        mode="workflow_full",
+        gray_percent=100,
+        double_write_metrics=False,
+        reason="m3-02 runtime test",
+        operator="tester",
+        env="dev",
+        trace_id="trace-m3-02-success",
+    )
 
     async def fake_assess_threat(ip: str, attack_type: str, attack_count: int, history=None, trace_id=None):
         return {
@@ -155,6 +166,16 @@ def test_approve_event_uses_runtime_and_finishes_success(monkeypatch, client, ad
 def test_approve_event_runtime_failure_maps_to_manual_required(monkeypatch, client, admin_token, test_db):
     workflow_key = _create_published_defense_workflow(client, admin_token)
     monkeypatch.setattr(defense_module, "_get_defense_runtime_workflow_key", lambda: workflow_key)
+    set_defense_workflow_rollout(
+        test_db,
+        mode="workflow_full",
+        gray_percent=100,
+        double_write_metrics=False,
+        reason="m3-02 runtime failure test",
+        operator="tester",
+        env="dev",
+        trace_id="trace-m3-02-failure",
+    )
 
     async def fake_assess_threat(ip: str, attack_type: str, attack_count: int, history=None, trace_id=None):
         return {

@@ -14,7 +14,13 @@ from core.database import ExecutionTask, SessionLocal, ScanFinding, ThreatEvent,
 from api.auth import require_permissions
 from services.ai_engine import ai_engine
 from services.audit_service import AuditService
+from services.metrics_service import metrics
 from services.mcp_client import mcp_client
+from services.workflow_rollout import (
+    get_defense_workflow_rollout,
+    set_defense_workflow_rollout,
+    should_route_to_workflow_runtime,
+)
 from services.workflow_runtime import run_published_workflow
 
 router = APIRouter(prefix="/api/v1/defense", tags=["defense"])
@@ -92,6 +98,13 @@ class EventResponse(BaseModel):
 
 
 class ApproveRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class DefenseWorkflowRolloutRequest(BaseModel):
+    mode: str = Field(..., description="legacy_only / workflow_gray / workflow_full")
+    gray_percent: int = Field(0, ge=0, le=100)
+    double_write_metrics: bool = False
     reason: Optional[str] = None
 
 
@@ -294,6 +307,42 @@ def _extract_mcp_error(result: Dict[str, Any]) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return "mcp_call_failed"
+
+
+def _get_rollout_env() -> str:
+    return os.getenv("APP_ENV", "dev")
+
+
+def _record_rollout_selection(
+    db: Session,
+    *,
+    route: str,
+    rollout: Dict[str, Any],
+    task_id: int,
+    trace_id: str,
+    note: Optional[str] = None,
+) -> None:
+    metrics.inc(f"defense_{route}_route_total")
+    if not rollout.get("double_write_metrics"):
+        return
+    metrics.inc("defense_rollout_double_write_total")
+    AuditService.log(
+        db=db,
+        actor="defense_rollout",
+        action="defense_workflow_route",
+        target=f"execution_task:{task_id}",
+        target_type="execution_task",
+        reason=_json_dumps(
+            {
+                "route": route,
+                "mode": rollout.get("mode"),
+                "gray_percent": rollout.get("gray_percent"),
+                "note": note,
+            }
+        ),
+        result="success",
+        trace_id=trace_id,
+    )
 
 
 def _runtime_retry_count(db: Session, workflow_run_id: int) -> int:
@@ -588,15 +637,45 @@ async def _run_execution_task_background(
             db.commit()
             return
 
-        handled_by_runtime = await _execute_block_task_via_workflow_runtime(
-            db=db,
-            event=event,
-            task=task,
+        rollout = get_defense_workflow_rollout(db, _get_rollout_env())
+        should_use_runtime = should_route_to_workflow_runtime(
+            rollout=rollout,
+            routing_key=f"execution_task:{task_id}",
             trace_id=trace_id,
-            approval_reason=approval_reason,
         )
-        if handled_by_runtime:
-            return
+        if should_use_runtime:
+            _record_rollout_selection(
+                db,
+                route="workflow",
+                rollout=rollout,
+                task_id=task_id,
+                trace_id=trace_id,
+            )
+            handled_by_runtime = await _execute_block_task_via_workflow_runtime(
+                db=db,
+                event=event,
+                task=task,
+                trace_id=trace_id,
+                approval_reason=approval_reason,
+            )
+            if handled_by_runtime:
+                return
+            _record_rollout_selection(
+                db,
+                route="fallback",
+                rollout=rollout,
+                task_id=task_id,
+                trace_id=trace_id,
+                note="runtime_unavailable",
+            )
+        else:
+            _record_rollout_selection(
+                db,
+                route="legacy",
+                rollout=rollout,
+                task_id=task_id,
+                trace_id=trace_id,
+            )
 
         await _execute_block_task(db=db, event=event, task=task, trace_id=trace_id)
     except Exception as exc:
@@ -933,6 +1012,44 @@ async def get_events(
         query = query.filter(ThreatEvent.status == status)
     events = query.order_by(ThreatEvent.created_at.desc()).limit(100).all()
     return events
+
+
+@router.get("/workflow-rollout")
+@compat_router.get("/workflow-rollout", include_in_schema=False)
+async def get_workflow_rollout_config(
+    current_user: User = Depends(require_permissions("view_system_mode")),
+    db: Session = Depends(get_db),
+):
+    return {
+        "code": 0,
+        "message": "Defense workflow rollout fetched",
+        "data": get_defense_workflow_rollout(db, _get_rollout_env()),
+    }
+
+
+@router.post("/workflow-rollout")
+@compat_router.post("/workflow-rollout", include_in_schema=False)
+async def set_workflow_rollout_config(
+    req: DefenseWorkflowRolloutRequest,
+    request: Request,
+    current_user: User = Depends(require_permissions("set_system_mode")),
+    db: Session = Depends(get_db),
+):
+    data = set_defense_workflow_rollout(
+        db,
+        mode=req.mode,
+        gray_percent=req.gray_percent,
+        double_write_metrics=req.double_write_metrics,
+        reason=req.reason,
+        operator=str(current_user.username),
+        env=_get_rollout_env(),
+        trace_id=getattr(request.state, "trace_id", None),
+    )
+    return {
+        "code": 0,
+        "message": "Defense workflow rollout updated",
+        "data": data,
+    }
 
 
 def _parse_filter_time(value: Optional[str], field_name: str) -> Optional[datetime]:
