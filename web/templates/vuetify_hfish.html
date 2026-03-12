@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>攻击日志 - AimiGuard</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <link href="/static/css/vuetify.min.css" rel="stylesheet">
+    <link href="/static/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="/static/css/inter.css" rel="stylesheet">
+    <style>
+        [v-cloak] {
+            display: none;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: #0B0F19;
+        }
+
+        .v-application {
+            background-color: transparent !important;
+            background-image:
+                radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(0, 229, 255, 0.08), transparent 25%) !important;
+            background-attachment: fixed !important;
+        }
+
+        .v-card {
+            background: rgba(26, 34, 53, 0.7) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+            transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+        }
+
+        .v-card:hover {
+            box-shadow: 0 12px 40px rgba(0, 229, 255, 0.1) !important;
+            border: 1px solid rgba(0, 229, 255, 0.2) !important;
+        }
+
+        .v-data-table,
+        .v-table,
+        .v-data-table-footer {
+            background: transparent !important;
+        }
+
+        .custom-app-bar {
+            background: linear-gradient(90deg, #0B0F19 0%, #1A2235 100%) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+        }
+
+        .text-h4 {
+            font-weight: 700 !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app-loading"
+        style="background:#0B0F19;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <div
+            style="width: 50px; height: 50px; border: 3px solid rgba(0, 229, 255, 0.1); border-radius: 50%; border-top-color: #00E5FF; animation: spin 1s ease-in-out infinite; margin-bottom: 20px;">
+        </div>
+        <div style="color:#00E5FF;font-size:1.2rem;font-family:'Inter',sans-serif;letter-spacing:2px;font-weight:500;">
+            AimiGuard System</div>
+        <style>
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+        </style>
+    </div>
+
+    {% raw %}
+    <div id="app" v-cloak>
+        <v-app>
+            <v-app-bar class="custom-app-bar" density="compact" elevation="0">
+                <v-app-bar-title style="color: #00E5FF; font-weight: 600; letter-spacing: 1px;">
+                    <v-icon class="mr-2" color="primary">mdi-shield-check-outline</v-icon>
+                    AimiGuard 安全监控
+                </v-app-bar-title>
+                <v-spacer></v-spacer>
+                <v-btn variant="text" href="/">
+                    <v-icon start>mdi-view-dashboard</v-icon>
+                    仪表盘
+                </v-btn>
+                <v-btn variant="text" href="/hfish">
+                    <v-icon start>mdi-alert-circle</v-icon>
+                    攻击日志
+                </v-btn>
+                <v-btn variant="text" href="/nmap">
+                    <v-icon start>mdi-radar</v-icon>
+                    网络扫描
+                </v-btn>
+                <v-btn variant="text" href="/vuln">
+                    <v-icon start>mdi-bug-outline</v-icon>
+                    漏洞扫描
+                </v-btn>
+                <v-btn variant="text" href="/settings">
+                    <v-icon start>mdi-cog</v-icon>
+                    设置
+                </v-btn>
+            </v-app-bar>
+
+            <v-main>
+                <v-container fluid>
+                    <v-row class="mb-4">
+                        <v-col cols="12">
+                            <v-card class="pa-4" style="border-left: 4px solid #3B82F6;">
+                                <div class="text-h4 font-weight-bold" style="color: #3B82F6;">{{ stats.total_attacks || 0 }}</div>
+                                <div class="text-grey">攻击总数统计</div>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <v-card>
+                        <v-card-title class="d-flex align-center">
+                            攻击记录
+                            <v-btn-toggle v-model="viewMode" mandatory class="ml-4" density="compact" color="primary"
+                                @update:model-value="loadLogs">
+                                <v-btn value="detail"><v-icon start>mdi-format-list-bulleted</v-icon>明细视图</v-btn>
+                                <v-btn value="aggregated"><v-icon start>mdi-folder-network</v-icon>按 IP 折叠视图</v-btn>
+                            </v-btn-toggle>
+                            <v-spacer></v-spacer>
+                            <v-btn icon @click="loadLogs">
+                                <v-icon>mdi-refresh</v-icon>
+                            </v-btn>
+                        </v-card-title>
+
+                        <v-card-text>
+                            <v-row dense class="mb-2">
+                                <v-col cols="12" md="3">
+                                    <v-text-field v-model="hfishSearch" label="搜索" variant="outlined" density="compact"
+                                        prepend-inner-icon="mdi-magnify" clearable hide-details></v-text-field>
+                                </v-col>
+                                <v-col cols="6" md="2">
+                                    <v-select v-model="filters.service_name" :items="services" label="服务类型"
+                                        density="compact" variant="outlined" hide-details clearable></v-select>
+                                </v-col>
+                            </v-row>
+                        </v-card-text>
+
+                        <v-data-table :headers="currentHeaders" :items="logs" :loading="loading" :search="hfishSearch"
+                            :items-per-page="50">
+                            <template v-slot:item.attack_ip="{ item }">
+                                <a href="#" @click.prevent="showNmap(item.attack_ip)" class="text-primary">{{
+                                    item.attack_ip || '-' }}</a>
+                            </template>
+                            <template v-slot:item.create_time_str="{ item }">
+                                {{ item.create_time_str || '-' }}
+                            </template>
+                            <template v-slot:item.latest_time="{ item }">
+                                {{ item.latest_time || '-' }}
+                            </template>
+                            <template v-slot:item.ai_analysis="{ item }">
+                                <div style="max-width: 300px; white-space: normal; word-break: break-all; font-size: 0.85rem;"
+                                    class="text-grey-lighten-1" v-if="item.ai_analysis">
+                                    {{ item.ai_analysis }}
+                                </div>
+                                <span v-else class="text-grey">暂无分析</span>
+                            </template>
+                            <template v-slot:item.decision="{ item }">
+                                <v-chip :color="item.decision === 'true' ? 'error' : 'success'" size="small"
+                                    v-if="item.decision">
+                                    {{ item.decision === 'true' ? '建议封禁' : '无需封禁' }}
+                                </v-chip>
+                                <span v-else class="text-grey">-</span>
+                            </template>
+                        </v-data-table>
+                    </v-card>
+                </v-container>
+            </v-main>
+
+            <!-- Nmap详情对话框 -->
+            <v-dialog v-model="nmapDialog" max-width="600">
+                <v-card>
+                    <v-card-title>网络扫描信息 - {{ nmapIp }}</v-card-title>
+                    <v-card-text v-if="nmapHost">
+                        <v-list>
+                            <v-list-item>
+                                <v-list-item-title>状态</v-list-item-title>
+                                <v-list-item-subtitle>
+                                    <v-chip :color="nmapHost.state === 'up' ? 'success' : 'grey'" size="small">
+                                        {{ nmapHost.state === 'up' ? '在线' : '离线' }}
+                                    </v-chip>
+                                </v-list-item-subtitle>
+                            </v-list-item>
+                            <v-list-item>
+                                <v-list-item-title>MAC地址</v-list-item-title>
+                                <v-list-item-subtitle>{{ nmapHost.mac_address || '-' }}</v-list-item-subtitle>
+                            </v-list-item>
+                            <v-list-item>
+                                <v-list-item-title>厂商</v-list-item-title>
+                                <v-list-item-subtitle>{{ nmapHost.vendor || '-' }}</v-list-item-subtitle>
+                            </v-list-item>
+                            <v-list-item>
+                                <v-list-item-title>主机名</v-list-item-title>
+                                <v-list-item-subtitle>{{ nmapHost.hostname || '-' }}</v-list-item-subtitle>
+                            </v-list-item>
+                            <v-list-item>
+                                <v-list-item-title>操作系统</v-list-item-title>
+                                <v-list-item-subtitle>{{ nmapHost.os_type || '-' }}</v-list-item-subtitle>
+                            </v-list-item>
+                        </v-list>
+                        <div v-if="nmapHost.services && nmapHost.services.length > 0">
+                            <div class="text-subtitle-2 mt-2">开放端口</div>
+                            <v-table density="compact">
+                                <thead>
+                                    <tr>
+                                        <th>端口</th>
+                                        <th>服务</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="s in nmapHost.services" :key="s.port">
+                                        <td>{{ s.port }}</td>
+                                        <td>{{ s.service }}</td>
+                                    </tr>
+                                </tbody>
+                            </v-table>
+                        </div>
+                    </v-card-text>
+                    <v-card-text v-else>未找到该IP的扫描记录</v-card-text>
+                    <v-card-actions>
+                        <v-spacer></v-spacer>
+                        <v-btn color="primary" variant="text" @click="nmapDialog = false">关闭</v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
+        </v-app>
+    </div>
+
+    <script src="/static/js/vue.global.prod.js"></script>
+    <script src="/static/js/vuetify.min.js"></script>
+
+    <script>
+        const { createApp, ref, watch, onMounted, computed } = Vue;
+        const { createVuetify } = Vuetify;
+
+        const vuetify = createVuetify({
+            theme: {
+                defaultTheme: 'dark',
+                themes: {
+                    dark: {
+                        colors: {
+                            primary: '#00E5FF',
+                            secondary: '#8B5CF6',
+                            accent: '#F472B6',
+                            error: '#EF4444',
+                            warning: '#F59E0B',
+                            info: '#3B82F6',
+                            success: '#10B981',
+                            background: '#0B0F19',
+                            surface: '#1A2235'
+                        }
+                    }
+                }
+            }
+        });
+
+        const app = createApp({
+            setup() {
+                const loading = ref(false);
+                const logs = ref([]);
+                const services = ref([]);
+                const stats = ref({ total_attacks: 0 });
+                const filters = ref({ service_name: null });
+                const hfishSearch = ref('');
+
+                const nmapDialog = ref(false);
+                const nmapIp = ref('');
+                const nmapHost = ref(null);
+
+                const viewMode = ref('detail');
+
+                const headersDetail = [
+                    { title: '攻击IP', key: 'attack_ip', width: '150px' },
+                    { title: '地理位置', key: 'ip_location', width: '150px' },
+                    { title: '服务类型', key: 'service_name', width: '150px' },
+                    { title: '端口', key: 'service_port', width: '100px' },
+                    { title: '时间', key: 'create_time_str' }
+                ];
+
+                const headersAggregated = [
+                    { title: '攻击IP', key: 'attack_ip', width: '150px' },
+                    { title: '归属地', key: 'ip_location', width: '120px' },
+                    { title: '攻击次数', key: 'attack_count', width: '100px' },
+                    { title: '服务分类', key: 'service_name', width: '150px' },
+                    { title: '最后活跃', key: 'latest_time', width: '160px' },
+                    { title: 'AI 封禁判定', key: 'decision', width: '110px' },
+                    { title: 'AI 智能分析记录', key: 'ai_analysis' }
+                ];
+
+                const currentHeaders = computed(() => {
+                    return viewMode.value === 'aggregated' ? headersAggregated : headersDetail;
+                });
+
+                const getThreatColor = (level) => {
+                    const colors = { '高危': 'error', '中危': 'warning', '低危': 'info', '信息': 'grey' };
+                    return colors[level] || 'grey';
+                };
+
+                const loadStats = async () => {
+                    try {
+                        const res = await fetch('/api/hfish/stats');
+                        const data = await res.json();
+                        // 移除对于没有用的 threat_stats 的计算，直接求服务攻击总数
+                        stats.value.total_attacks = (data.service_stats || []).reduce((acc, curr) => acc + curr.count, 0);
+                        services.value = data.service_stats?.map(s => s.name) || [];
+                    } catch (e) {
+                        console.error('加载统计失败:', e);
+                    }
+                };
+
+                const loadLogs = async () => {
+                    loading.value = true;
+                    try {
+                        let url = viewMode.value === 'aggregated' ? '/api/hfish/aggregated_logs?limit=1000' : '/api/hfish/logs?limit=1000';
+                        if (filters.value.service_name) url += `&service_name=${filters.value.service_name}`;
+                        const res = await fetch(url);
+                        logs.value = await res.json();
+                    } catch (e) {
+                        console.error('加载日志失败:', e);
+                    }
+                    loading.value = false;
+                };
+
+                const showNmap = async (ip) => {
+                    nmapIp.value = ip;
+                    nmapDialog.value = true;
+                    try {
+                        const res = await fetch(`/api/nmap/host/${ip}`);
+                        nmapHost.value = await res.json();
+                    } catch (e) {
+                        nmapHost.value = null;
+                    }
+                };
+
+                watch(filters, loadLogs, { deep: true });
+
+                onMounted(() => {
+                    loadStats();
+                    loadLogs();
+                });
+
+                return {
+                    loading, logs, services, stats, filters,
+                    currentHeaders, viewMode, loadLogs, hfishSearch,
+                    nmapDialog, nmapIp, nmapHost, showNmap
+                };
+            }
+        });
+
+        app.use(vuetify);
+        app.mount('#app');
+        document.getElementById('app-loading').style.display = 'none';
+    </script>
+    {% endraw %}
+</body>
+
+</html>

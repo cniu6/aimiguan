@@ -1,1 +1,0 @@
-<nmaprun><host><status state="up"/><ports><port protocol="tcp" portid="1194"><state state="open"/><service name="openvpn" product="OpenVPN" version="2.4"/></port></ports></host></nmaprun>

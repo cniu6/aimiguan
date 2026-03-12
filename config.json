@@ -1,0 +1,106 @@
+{
+  "hfish": {
+    "host_port": "127.0.0.1:4433",
+    "api_key": "IXsdweVjepwhtPgchSvDqaRIntolDoUncNGqiSZAFBLNbAUBnStLYchDClDytmaJ",
+    "sync_interval": 60,
+    "sync_enabled": true
+  },
+  "ai": {
+    "enabled": true,
+    "auto_ban": false,
+    "api_url": "http://127.0.0.1:1234/v1/chat/completions",
+    "api_key": "okoko",
+    "model": "qwen/qwen3-4b",
+    "timeout": 160
+  },
+  "switches": [
+    {
+      "host": "192.168.1.1",
+      "port": 23,
+      "username": "admin",
+      "password": "password",
+      "acl_number": 3000,
+      "device_type": "huawei_telnet"
+    },
+    {
+      "host": "192.168.1.2",
+      "port": 23,
+      "username": "admin",
+      "password": "password",
+      "acl_number": 3000,
+      "device_type": "huawei_telnet"
+    }
+  ],
+  "nmap": {
+    "ip_ranges": [
+      "10.24.101.97/24"
+    ],
+    "arguments": "-sS -T4 -O -sV ",
+    "scan_interval": 604800,
+    "scan_enabled": true,
+    "vuln_scripts_by_tag": {
+      "Windows 10": [
+        "smb-vuln-ms17-010"
+      ],
+      "Windows xp": [
+        "smb-vuln-ms17-010",
+        "smb-vuln-ms08-067",
+        "rdp-vuln-ms19-0708"
+      ],
+      "Windows 7": [
+        "smb-vuln-ms17-010",
+        "smb-vuln-ms08-067",
+        "rdp-vuln-ms19-0708"
+      ],
+      "linux": [
+        "ftp-anon",
+        "ssh-vuln-openssh"
+      ],
+      "unknown": [
+        "ftp-anon"
+      ]
+    },
+    "vuln_port_map": {
+      "smb-vuln-ms17-010": [
+        445,
+        139
+      ],
+      "smb-vuln-ms08-067": [
+        445,
+        139
+      ],
+      "ftp-anon": [
+        21
+      ],
+      "ssh-vuln-openssh": [
+        22
+      ],
+      "http-vuln-cve2021-41773": [
+        80,
+        443,
+        8080
+      ],
+      "http-vuln-cve2017-5638": [
+        80,
+        443,
+        8080
+      ],
+      "rdp-vuln-ms12-020": [
+        3389
+      ],
+      "rdp-vuln-ms19-0708": [
+        3389
+      ],
+      "mysql-vuln-cve2012-2122": [
+        3306
+      ],
+      "redis-info": [
+        6379
+      ]
+    }
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5000
+  }
+}

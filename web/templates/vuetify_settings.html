@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设置 - AimiGuard</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <link href="/static/css/vuetify.min.css" rel="stylesheet">
+    <link href="/static/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="/static/css/inter.css" rel="stylesheet">
+    <style>
+        [v-cloak] {
+            display: none;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: #0B0F19;
+        }
+
+        .v-application {
+            background-color: transparent !important;
+            background-image:
+                radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(0, 229, 255, 0.08), transparent 25%) !important;
+            background-attachment: fixed !important;
+        }
+
+        .v-card {
+            background: rgba(26, 34, 53, 0.7) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+            transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+        }
+
+        .v-card:hover {
+            box-shadow: 0 12px 40px rgba(0, 229, 255, 0.1) !important;
+            border: 1px solid rgba(0, 229, 255, 0.2) !important;
+        }
+
+        .custom-app-bar {
+            background: linear-gradient(90deg, #0B0F19 0%, #1A2235 100%) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app-loading"
+        style="background:#0B0F19;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <div
+            style="width: 50px; height: 50px; border: 3px solid rgba(0, 229, 255, 0.1); border-radius: 50%; border-top-color: #00E5FF; animation: spin 1s ease-in-out infinite; margin-bottom: 20px;">
+        </div>
+        <div style="color:#00E5FF;font-size:1.2rem;font-family:'Inter',sans-serif;letter-spacing:2px;font-weight:500;">
+            AimiGuard System</div>
+        <style>
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+        </style>
+    </div>
+
+    {% raw %}
+    <div id="app" v-cloak>
+        <v-app>
+            <v-app-bar class="custom-app-bar" density="compact" elevation="0">
+                <v-app-bar-title style="color: #00E5FF; font-weight: 600; letter-spacing: 1px;">
+                    <v-icon class="mr-2" color="primary">mdi-shield-check-outline</v-icon>
+                    AimiGuard 安全监控
+                </v-app-bar-title>
+                <v-spacer></v-spacer>
+                <v-btn variant="text" href="/">
+                    <v-icon start>mdi-view-dashboard</v-icon>
+                    仪表盘
+                </v-btn>
+                <v-btn variant="text" href="/hfish">
+                    <v-icon start>mdi-alert-circle</v-icon>
+                    攻击日志
+                </v-btn>
+                <v-btn variant="text" href="/nmap">
+                    <v-icon start>mdi-radar</v-icon>
+                    网络扫描
+                </v-btn>
+                <v-btn variant="text" href="/vuln">
+                    <v-icon start>mdi-bug-outline</v-icon>
+                    漏洞扫描
+                </v-btn>
+                <v-btn variant="text" href="/settings">
+                    <v-icon start>mdi-cog</v-icon>
+                    设置
+                </v-btn>
+            </v-app-bar>
+
+            <v-main>
+                <v-container fluid style="max-width: 800px;">
+                    <v-card class="mb-4">
+                        <v-card-title>HFish 攻击日志同步</v-card-title>
+                        <v-card-text>
+                            <v-row>
+                                <v-col cols="12" md="6">
+                                    <v-text-field v-model="hfish.host_port" label="HFish 地址" variant="outlined"
+                                        density="compact" placeholder="127.0.0.1:4433"></v-text-field>
+                                </v-col>
+                                <v-col cols="12" md="6">
+                                    <v-text-field v-model="hfish.api_key" label="API 密钥" variant="outlined"
+                                        density="compact" placeholder="API密钥" type="password"></v-text-field>
+                                </v-col>
+                                <v-col cols="12" md="6">
+                                    <v-text-field v-model.number="hfish.sync_interval" label="同步间隔 (秒)"
+                                        variant="outlined" density="compact" type="number"
+                                        hint="默认60秒同步一次"></v-text-field>
+                                </v-col>
+                                <v-col cols="12" md="6">
+                                    <v-switch v-model="hfish.sync_enabled" label="启用自动同步" color="primary"
+                                        hide-details></v-switch>
+                                </v-col>
+                            </v-row>
+                        </v-card-text>
+                    </v-card>
+
+                    <v-card class="mb-4">
+                        <v-card-title>Nmap 网络扫描</v-card-title>
+                        <v-card-text>
+                            <v-row>
+                                <v-col cols="12" md="6">
+                                    <v-text-field v-model="nmap.ip_ranges" label="扫描网段" variant="outlined"
+                                        density="compact" placeholder="192.168.1.1/24" hint="多个用逗号分隔"
+                                        persistent-hint></v-text-field>
+                                </v-col>
+                                <v-col cols="12" md="6">
+                                    <v-text-field v-model="nmap.arguments" label="扫描参数" variant="outlined"
+                                        density="compact" placeholder="-sS -O -T4"></v-text-field>
+                                </v-col>
+                                <v-col cols="12" md="6">
+                                    <v-text-field v-model.number="nmap.scan_interval" label="扫描间隔 (秒)"
+                                        variant="outlined" density="compact" type="number" hint="默认604800秒（一周）"
+                                        persistent-hint></v-text-field>
+                                </v-col>
+                                <v-col cols="12" md="6">
+                                    <v-switch v-model="nmap.scan_enabled" label="启用自动扫描" color="primary"
+                                        hide-details></v-switch>
+                                </v-col>
+                                <v-col cols="12">
+                                    <div class="text-subtitle-2 mb-2" style="color: #00E5FF;">漏洞扫描规则</div>
+
+                                    <!-- 快速添加 -->
+                                    <v-row dense class="mb-3 align-center">
+                                        <v-col cols="12" md="3">
+                                            <v-select v-model="newRuleTag" :items="osTagOptions" label="系统标签"
+                                                variant="outlined" density="compact" hide-details></v-select>
+                                        </v-col>
+                                        <v-col cols="12" md="6">
+                                            <v-text-field v-model="newRuleScripts" label="漏洞脚本" variant="outlined"
+                                                density="compact" placeholder="如: smb-vuln-ms17-010, ftp-anon（多个用逗号分隔）"
+                                                hide-details></v-text-field>
+                                        </v-col>
+                                        <v-col cols="12" md="3">
+                                            <v-btn color="primary" variant="tonal" @click="addVulnRule" block>
+                                                <v-icon start>mdi-plus</v-icon>
+                                                添加规则
+                                            </v-btn>
+                                        </v-col>
+                                    </v-row>
+
+                                    <!-- 已有规则列表 -->
+                                    <div v-for="(scripts, tag) in parsedVulnRules" :key="tag" class="mb-2 pa-2"
+                                        style="border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+                                        <div class="d-flex align-center">
+                                            <v-chip color="primary" size="small" class="mr-2">{{ tag }}</v-chip>
+                                            <span class="text-grey text-body-2 flex-grow-1">{{ scripts.join(', ')
+                                                }}</span>
+                                            <v-btn icon size="x-small" variant="text" color="error"
+                                                @click="removeVulnRule(tag)">
+                                                <v-icon size="small">mdi-delete-outline</v-icon>
+                                            </v-btn>
+                                        </div>
+                                    </div>
+                                    <div v-if="Object.keys(parsedVulnRules).length === 0"
+                                        class="text-grey text-body-2 mb-2">
+                                        暂无规则，请通过上方输入框添加
+                                    </div>
+
+                                    <!-- JSON 原始编辑 -->
+                                    <v-expansion-panels variant="accordion" class="mt-2">
+                                        <v-expansion-panel>
+                                            <v-expansion-panel-title class="text-body-2">
+                                                <v-icon start size="small">mdi-code-json</v-icon>
+                                                高级: 直接编辑 JSON
+                                            </v-expansion-panel-title>
+                                            <v-expansion-panel-text>
+                                                <v-textarea v-model="nmap.vuln_scripts_by_tag_text" variant="outlined"
+                                                    density="compact" rows="6" style="font-family: monospace;"
+                                                    hide-details @blur="syncRulesFromJson"></v-textarea>
+                                            </v-expansion-panel-text>
+                                        </v-expansion-panel>
+                                    </v-expansion-panels>
+                                </v-col>
+                            </v-row>
+                        </v-card-text>
+                    </v-card>
+
+                    <v-btn color="primary" size="large" @click="saveSettings" :loading="saving">
+                        <v-icon start>mdi-content-save</v-icon>
+                        保存设置
+                    </v-btn>
+
+                    <!-- 消息提示 -->
+                    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
+                        {{ snackbarText }}
+                    </v-snackbar>
+                </v-container>
+            </v-main>
+        </v-app>
+    </div>
+
+    <script src="/static/js/vue.global.prod.js"></script>
+    <script src="/static/js/vuetify.min.js"></script>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+        const { createVuetify } = Vuetify;
+
+        const vuetify = createVuetify({
+            theme: {
+                defaultTheme: 'dark',
+                themes: {
+                    dark: {
+                        colors: {
+                            primary: '#00E5FF',
+                            secondary: '#8B5CF6',
+                            accent: '#F472B6',
+                            error: '#EF4444',
+                            warning: '#F59E0B',
+                            info: '#3B82F6',
+                            success: '#10B981',
+                            background: '#0B0F19',
+                            surface: '#1A2235'
+                        }
+                    }
+                }
+            }
+        });
+
+        const app = createApp({
+            setup() {
+                const saving = ref(false);
+                const snackbar = ref(false);
+                const snackbarText = ref('');
+                const snackbarColor = ref('success');
+                const hfish = ref({
+                    host_port: '',
+                    api_key: '',
+                    sync_interval: 60,
+                    sync_enabled: false
+                });
+                const nmap = ref({
+                    ip_ranges: '',
+                    arguments: '-sS -O -T4',
+                    scan_interval: 604800,
+                    scan_enabled: false,
+                    vuln_scripts_by_tag_text: ''
+                });
+
+                const loadSettings = async () => {
+                    try {
+                        const res = await fetch('/api/settings');
+                        const data = await res.json();
+
+                        if (data.hfish) {
+                            hfish.value.host_port = data.hfish.host_port || '';
+                            hfish.value.api_key = ''; // 不返回api_key
+                            hfish.value.sync_interval = data.hfish.sync_interval || 60;
+                            hfish.value.sync_enabled = data.hfish.sync_enabled || false;
+                        }
+
+                        if (data.nmap) {
+                            nmap.value.ip_ranges = data.nmap.ip_ranges ? data.nmap.ip_ranges.join(', ') : '';
+                            nmap.value.arguments = data.nmap.arguments || '-sS -O -T4';
+                            nmap.value.scan_interval = data.nmap.scan_interval || 604800;
+                            nmap.value.scan_enabled = data.nmap.scan_enabled || false;
+                            nmap.value.vuln_scripts_by_tag_text = data.nmap.vuln_scripts_by_tag
+                                ? JSON.stringify(data.nmap.vuln_scripts_by_tag, null, 2)
+                                : '';
+                            // 同步解析后的规则到可视化列表
+                            syncRulesFromJson();
+                        }
+                    } catch (e) {
+                        console.error('加载设置失败:', e);
+                    }
+                };
+
+                const saveSettings = async () => {
+                    saving.value = true;
+                    try {
+                        let parsedVulnScripts = {};
+                        if (nmap.value.vuln_scripts_by_tag_text.trim()) {
+                            try {
+                                parsedVulnScripts = JSON.parse(nmap.value.vuln_scripts_by_tag_text);
+                            } catch (e) {
+                                snackbarText.value = '保存失败: 漏洞扫描规则 JSON 格式错误';
+                                snackbarColor.value = 'error';
+                                snackbar.value = true;
+                                saving.value = false;
+                                return;
+                            }
+                        }
+
+                        const res = await fetch('/api/settings', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                hfish: {
+                                    host_port: hfish.value.host_port,
+                                    api_key: hfish.value.api_key,
+                                    sync_interval: hfish.value.sync_interval,
+                                    sync_enabled: hfish.value.sync_enabled
+                                },
+                                nmap: {
+                                    ip_ranges: nmap.value.ip_ranges ? nmap.value.ip_ranges.split(',').map(s => s.trim()).filter(s => s) : [],
+                                    arguments: nmap.value.arguments,
+                                    scan_interval: nmap.value.scan_interval,
+                                    scan_enabled: nmap.value.scan_enabled,
+                                    vuln_scripts_by_tag: parsedVulnScripts
+                                }
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            snackbarText.value = '设置已保存';
+                            snackbarColor.value = 'success';
+                            snackbar.value = true;
+                        } else {
+                            snackbarText.value = '保存失败: ' + data.message;
+                            snackbarColor.value = 'error';
+                            snackbar.value = true;
+                        }
+                    } catch (e) {
+                        snackbarText.value = '保存失败: ' + e;
+                        snackbarColor.value = 'error';
+                        snackbar.value = true;
+                    }
+                    saving.value = false;
+                };
+
+                const newRuleTag = ref(null);
+                const newRuleScripts = ref('');
+                const parsedVulnRules = ref({});
+                const osTagOptions = [
+                    { title: 'Windows (通用)', value: 'windows' },
+                    { title: 'Windows 10/11', value: 'win10' },
+                    { title: 'Windows 8', value: 'win8' },
+                    { title: 'Windows 7', value: 'win7' },
+                    { title: 'Windows Vista', value: 'winvista' },
+                    { title: 'Windows XP', value: 'winxp' },
+                    { title: 'Windows 2000', value: 'win2000' },
+                    { title: 'Windows Server', value: 'winserver' },
+                    { title: 'Linux', value: 'linux' },
+                    { title: 'BSD', value: 'bsd' },
+                    { title: 'macOS', value: 'macos' },
+                    { title: '未知系统', value: 'unknown' }
+                ];
+
+                const syncRulesFromJson = () => {
+                    try {
+                        if (nmap.value.vuln_scripts_by_tag_text.trim()) {
+                            parsedVulnRules.value = JSON.parse(nmap.value.vuln_scripts_by_tag_text);
+                        } else {
+                            parsedVulnRules.value = {};
+                        }
+                    } catch (e) {
+                        // JSON 解析失败时不更新规则列表
+                    }
+                };
+
+                const syncJsonFromRules = () => {
+                    nmap.value.vuln_scripts_by_tag_text = JSON.stringify(parsedVulnRules.value, null, 2);
+                };
+
+                const addVulnRule = () => {
+                    const tag = newRuleTag.value.trim().toLowerCase();
+                    const scripts = newRuleScripts.value.split(',').map(s => s.trim()).filter(s => s);
+                    if (!tag) {
+                        snackbarText.value = '请输入系统标签';
+                        snackbarColor.value = 'warning';
+                        snackbar.value = true;
+                        return;
+                    }
+                    if (scripts.length === 0) {
+                        snackbarText.value = '请输入至少一个漏洞脚本';
+                        snackbarColor.value = 'warning';
+                        snackbar.value = true;
+                        return;
+                    }
+                    // 如果已存在则追加，不重复
+                    if (parsedVulnRules.value[tag]) {
+                        const existing = new Set(parsedVulnRules.value[tag]);
+                        scripts.forEach(s => existing.add(s));
+                        parsedVulnRules.value[tag] = [...existing];
+                    } else {
+                        parsedVulnRules.value[tag] = scripts;
+                    }
+                    syncJsonFromRules();
+                    newRuleTag.value = '';
+                    newRuleScripts.value = '';
+                    snackbarText.value = `已添加规则: ${tag}`;
+                    snackbarColor.value = 'success';
+                    snackbar.value = true;
+                };
+
+                const removeVulnRule = (tag) => {
+                    delete parsedVulnRules.value[tag];
+                    parsedVulnRules.value = { ...parsedVulnRules.value };
+                    syncJsonFromRules();
+                };
+
+                onMounted(() => {
+                    loadSettings();
+                });
+
+                return {
+                    saving, snackbar, snackbarText, snackbarColor, hfish, nmap, saveSettings,
+                    newRuleTag, newRuleScripts, parsedVulnRules, osTagOptions,
+                    addVulnRule, removeVulnRule, syncRulesFromJson
+                };
+            }
+        });
+
+        app.use(vuetify);
+        app.mount('#app');
+        document.getElementById('app-loading').style.display = 'none';
+    </script>
+    {% endraw %}
+</body>
+
+</html>

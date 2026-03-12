@@ -1,6 +1,0 @@
-id,actor,action,target,target_ip,reason,result,trace_id,created_at
-5,admin,test_action,test_target,,,success,t_export_seed,2026-03-08 15:48:13.101960
-4,admin,backup_create,backup:1,,,success,373d65a1-efb3-4aa3-8639-4ac7bcbcda34,2026-03-08 15:48:12.887818
-3,admin,alert_postmortem,alert:3,,,success,t_pm,2026-03-08 15:48:12.601019
-2,admin,alert_resolve,alert:3,,,success,t_resolve,2026-03-08 15:48:12.559209
-1,admin,alert_ack,alert:3,,,success,t_ack,2026-03-08 15:48:12.521850

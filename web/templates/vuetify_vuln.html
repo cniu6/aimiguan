@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>漏洞扫描 - AimiGuard</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <link href="/static/css/vuetify.min.css" rel="stylesheet">
+    <link href="/static/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="/static/css/inter.css" rel="stylesheet">
+    <style>
+        [v-cloak] {
+            display: none;
+        }
+
+        .v-data-table td {
+            height: 44px !important;
+            padding: 4px 16px !important;
+            white-space: nowrap;
+        }
+
+        .v-data-table th {
+            font-weight: bold !important;
+            height: 44px !important;
+            background-color: rgba(255, 255, 255, 0.05) !important;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: #0B0F19;
+        }
+
+        .v-application {
+            background-color: transparent !important;
+            background-image:
+                radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(0, 229, 255, 0.08), transparent 25%) !important;
+            background-attachment: fixed !important;
+        }
+
+        .v-card {
+            background: rgba(26, 34, 53, 0.7) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+            transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+        }
+
+        .v-card:hover {
+            box-shadow: 0 12px 40px rgba(0, 229, 255, 0.1) !important;
+            border: 1px solid rgba(0, 229, 255, 0.2) !important;
+        }
+
+        .v-data-table,
+        .v-table,
+        .v-data-table-footer {
+            background: transparent !important;
+        }
+
+        .custom-app-bar {
+            background: linear-gradient(90deg, #0B0F19 0%, #1A2235 100%) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+        }
+
+        .text-h4 {
+            font-weight: 700 !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app-loading"
+        style="background:#0B0F19;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <div
+            style="width: 50px; height: 50px; border: 3px solid rgba(0, 229, 255, 0.1); border-radius: 50%; border-top-color: #00E5FF; animation: spin 1s ease-in-out infinite; margin-bottom: 20px;">
+        </div>
+        <div style="color:#00E5FF;font-size:1.2rem;font-family:'Inter',sans-serif;letter-spacing:2px;font-weight:500;">
+            AimiGuard System</div>
+        <style>
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+        </style>
+    </div>
+
+    {% raw %}
+    <div id="app" v-cloak>
+        <v-app>
+            <v-app-bar class="custom-app-bar" density="compact" elevation="0">
+                <v-app-bar-title style="color: #00E5FF; font-weight: 600; letter-spacing: 1px;">
+                    <v-icon class="mr-2" color="primary">mdi-shield-check-outline</v-icon>
+                    AimiGuard 安全监控
+                </v-app-bar-title>
+                <v-spacer></v-spacer>
+                <v-btn variant="text" href="/">
+                    <v-icon start>mdi-view-dashboard</v-icon>
+                    仪表盘
+                </v-btn>
+                <v-btn variant="text" href="/hfish">
+                    <v-icon start>mdi-alert-circle</v-icon>
+                    攻击日志
+                </v-btn>
+                <v-btn variant="text" href="/nmap">
+                    <v-icon start>mdi-radar</v-icon>
+                    网络扫描
+                </v-btn>
+                <v-btn variant="text" href="/vuln">
+                    <v-icon start>mdi-bug-outline</v-icon>
+                    漏洞扫描
+                </v-btn>
+                <v-btn variant="text" href="/settings">
+                    <v-icon start>mdi-cog</v-icon>
+                    设置
+                </v-btn>
+            </v-app-bar>
+
+            <v-main>
+                <v-container fluid>
+                    <!-- 统计 -->
+                    <v-row class="mb-4">
+                        <v-col cols="12" md="3">
+                            <v-card class="pa-4" style="border-left: 4px solid #EF4444;">
+                                <div class="text-h4 font-weight-bold" style="color: #EF4444;">{{ vulnStats.vulnerable ||
+                                    0 }}</div>
+                                <div class="text-grey">发现漏洞</div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="12" md="3">
+                            <v-card class="pa-4" style="border-left: 4px solid #10B981;">
+                                <div class="text-h4 font-weight-bold" style="color: #10B981;">{{ vulnStats.safe || 0 }}
+                                </div>
+                                <div class="text-grey">安全</div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="12" md="3">
+                            <v-card class="pa-4" style="border-left: 4px solid #F59E0B;">
+                                <div class="text-h4 font-weight-bold" style="color: #F59E0B;">{{
+                                    vulnStats.vulnerable_devices || 0 }}</div>
+                                <div class="text-grey">受影响设备</div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="12" md="3">
+                            <v-card class="pa-4" style="border-left: 4px solid #6B7280;">
+                                <div class="text-h4 font-weight-bold" style="color: #6B7280;">{{ vulnStats.error || 0 }}
+                                </div>
+                                <div class="text-grey">扫描失败</div>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <!-- 漏洞扫描结果 -->
+                    <v-card class="mb-4">
+                        <v-card-title class="d-flex align-center">
+                            漏洞扫描结果
+                            <v-spacer></v-spacer>
+                            <v-btn color="primary" variant="tonal" class="mr-2" @click="startVulnScan"
+                                :loading="vulnScanning">
+                                <v-icon start>mdi-shield-search</v-icon>
+                                手动扫描
+                            </v-btn>
+                            <v-btn icon @click="loadVulnResults">
+                                <v-icon>mdi-refresh</v-icon>
+                            </v-btn>
+                        </v-card-title>
+
+                        <v-card-text>
+                            <v-row dense class="mb-2">
+                                <v-col cols="12" md="3">
+                                    <v-text-field v-model="filters.search" label="搜索" variant="outlined"
+                                        density="compact" prepend-inner-icon="mdi-magnify" clearable
+                                        hide-details></v-text-field>
+                                </v-col>
+                                <v-col cols="6" md="2">
+                                    <v-select v-model="filters.result" :items="resultOptions" label="结果"
+                                        variant="outlined" density="compact" clearable hide-details></v-select>
+                                </v-col>
+                                <v-col cols="6" md="2">
+                                    <v-select v-model="filters.vulnName" :items="vulnNameOptions" label="漏洞名称"
+                                        variant="outlined" density="compact" clearable hide-details></v-select>
+                                </v-col>
+                                <v-col cols="6" md="2">
+                                    <v-select v-model="filters.osTags" :items="osTagsOptions" label="系统标签"
+                                        variant="outlined" density="compact" clearable hide-details></v-select>
+                                </v-col>
+                            </v-row>
+                        </v-card-text>
+
+                        <v-data-table :headers="vulnHeaders" :items="filteredVulnResults" :loading="vulnLoading"
+                            :search="filters.search" :items-per-page="50">
+                            <template v-slot:item.vuln_name="{ item }">
+                                <v-tooltip location="top" :text="item.vuln_name">
+                                    <template v-slot:activator="{ props }">
+                                        <div v-bind="props" class="text-truncate text-body-2"
+                                            style="max-width: 25vw; cursor: default;">
+                                            {{ item.vuln_name }}
+                                        </div>
+                                    </template>
+                                </v-tooltip>
+                            </template>
+                            <template v-slot:item.os_tags="{ item }">
+                                <v-tooltip location="top" :text="item.os_tags">
+                                    <template v-slot:activator="{ props }">
+                                        <div v-bind="props" class="text-truncate text-body-2"
+                                            style="max-width: 20vw; cursor: default;">
+                                            {{ item.os_tags }}
+                                        </div>
+                                    </template>
+                                </v-tooltip>
+                            </template>
+                            <template v-slot:item.vuln_result="{ item }">
+                                <v-tooltip v-if="item.vuln_result === 'error'" :text="item.vuln_details || '扫描失败'"
+                                    location="top">
+                                    <template v-slot:activator="{ props }">
+                                        <v-chip v-bind="props" color="grey" size="small" variant="outlined">
+                                            失败
+                                        </v-chip>
+                                    </template>
+                                </v-tooltip>
+                                <v-chip v-else :color="getVulnColor(item.vuln_result)" size="small">
+                                    {{ getVulnText(item.vuln_result) }}
+                                </v-chip>
+                            </template>
+                            <template v-slot:item.scan_time="{ item }">
+                                {{ item.scan_time || '-' }}
+                            </template>
+                            <template v-slot:item.actions="{ item }">
+                                <v-btn v-if="item.vuln_result !== 'safe'" size="x-small" variant="tonal" color="success"
+                                    @click="markAsSafe(item)" class="text-caption px-1">
+                                    标记安全
+                                </v-btn>
+                            </template>
+                        </v-data-table>
+                    </v-card>
+                </v-container>
+            </v-main>
+
+            <!-- 消息提示 -->
+            <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
+                {{ snackbarText }}
+            </v-snackbar>
+
+            <!-- 确认对话框 -->
+            <v-dialog v-model="confirmSafeDialog" max-width="400">
+                <v-card>
+                    <v-card-title class="text-h6">确认标记为安全？</v-card-title>
+                    <v-card-text v-if="itemToMarkSafe">
+                        确定将 <b>{{ itemToMarkSafe.ip }}</b> 的 <b>{{ itemToMarkSafe.vuln_name }}</b> 标记为安全吗？
+                        标记后系统将认为该漏洞已修复或为误报，后续扫描将跳过此项。
+                    </v-card-text>
+                    <v-card-actions>
+                        <v-spacer></v-spacer>
+                        <v-btn variant="text" @click="confirmSafeDialog = false">取消</v-btn>
+                        <v-btn color="success" variant="flat" @click="confirmMarkAsSafe" :loading="confirmSafeLoading">
+                            确认标记
+                        </v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
+        </v-app>
+    </div>
+
+    <script src="/static/js/vue.global.prod.js"></script>
+    <script src="/static/js/vuetify.min.js"></script>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+        const { createVuetify } = Vuetify;
+
+        const vuetify = createVuetify({
+            theme: {
+                defaultTheme: 'dark',
+                themes: {
+                    dark: {
+                        colors: {
+                            primary: '#00E5FF',
+                            secondary: '#8B5CF6',
+                            accent: '#F472B6',
+                            error: '#EF4444',
+                            warning: '#F59E0B',
+                            info: '#3B82F6',
+                            success: '#10B981',
+                            background: '#0B0F19',
+                            surface: '#1A2235'
+                        }
+                    }
+                }
+            }
+        });
+
+        const app = createApp({
+            setup() {
+                const snackbar = ref(false);
+                const snackbarText = ref('');
+                const snackbarColor = ref('success');
+
+                const vulnResults = ref([]);
+                const vulnLoading = ref(false);
+                const vulnStats = ref({ vulnerable: 0, safe: 0, vulnerable_devices: 0, error: 0 });
+
+                const filters = ref({
+                    search: '',
+                    result: null,
+                    vulnName: null,
+                    osTags: null
+                });
+
+                const resultOptions = [
+                    { title: '漏洞', value: 'vulnerable' },
+                    { title: '安全', value: 'safe' },
+                    { title: '失败', value: 'error' }
+                ];
+
+                const vulnNameOptions = computed(() => {
+                    const names = [...new Set(vulnResults.value.map(r => r.vuln_name).filter(Boolean))];
+                    return names.sort();
+                });
+
+                const osTagsOptions = computed(() => {
+                    const tags = [...new Set(vulnResults.value.map(r => r.os_tags).filter(Boolean))];
+                    return tags.sort();
+                });
+
+                const filteredVulnResults = computed(() => {
+                    let results = vulnResults.value;
+                    if (filters.value.result) {
+                        results = results.filter(r => r.vuln_result === filters.value.result);
+                    }
+                    if (filters.value.vulnName) {
+                        results = results.filter(r => r.vuln_name === filters.value.vulnName);
+                    }
+                    if (filters.value.osTags) {
+                        results = results.filter(r => r.os_tags === filters.value.osTags);
+                    }
+                    return results;
+                });
+
+                const vulnHeaders = [
+                    { title: 'IP地址', key: 'ip', width: '150px' },
+                    { title: 'MAC地址', key: 'mac_address', width: '180px' },
+                    { title: '漏洞名称', key: 'vuln_name', width: '200px' },
+                    { title: '结果', key: 'vuln_result', width: '100px' },
+                    { title: '系统标签', key: 'os_tags', width: '150px' },
+                    { title: '扫描时间', key: 'scan_time', width: '180px' },
+                    { title: '操作', key: 'actions', width: '100px', sortable: false },
+                    { title: '', key: 'spacer', sortable: false }
+                ];
+
+                const loadVulnResults = async () => {
+                    vulnLoading.value = true;
+                    try {
+                        const res = await fetch('/api/nmap/vuln?limit=1000');
+                        vulnResults.value = await res.json();
+
+                        // 加载统计
+                        const statsRes = await fetch('/api/nmap/vuln/stats');
+                        vulnStats.value = await statsRes.json();
+                    } catch (e) {
+                        console.error('加载漏洞结果失败:', e);
+                    }
+                    vulnLoading.value = false;
+                };
+
+                const getVulnColor = (result) => {
+                    if (result === 'vulnerable') return 'error';
+                    if (result === 'safe') return 'success';
+                    return 'warning';
+                };
+
+                const getVulnText = (result) => {
+                    if (result === 'vulnerable') return '漏洞';
+                    if (result === 'safe') return '安全';
+                    return '未知';
+                };
+
+                const vulnScanning = ref(false);
+
+                const startVulnScan = async () => {
+                    vulnScanning.value = true;
+                    try {
+                        const res = await fetch('/api/nmap/vuln/scan', { method: 'POST' });
+                        const data = await res.json();
+                        snackbarText.value = data.message;
+                        snackbarColor.value = data.success ? 'success' : 'warning';
+                        snackbar.value = true;
+                        if (data.success) {
+                            // 定时刷新结果
+                            setTimeout(() => { loadVulnResults(); vulnScanning.value = false; }, 30000);
+                            return;
+                        }
+                    } catch (e) {
+                        snackbarText.value = '启动扫描失败: ' + e;
+                        snackbarColor.value = 'error';
+                        snackbar.value = true;
+                    }
+                    vulnScanning.value = false;
+                };
+
+                const confirmSafeDialog = ref(false);
+                const confirmSafeLoading = ref(false);
+                const itemToMarkSafe = ref(null);
+
+                const markAsSafe = (item) => {
+                    itemToMarkSafe.value = item;
+                    confirmSafeDialog.value = true;
+                };
+
+                const confirmMarkAsSafe = async () => {
+                    if (!itemToMarkSafe.value) return;
+                    confirmSafeLoading.value = true;
+                    try {
+                        const res = await fetch('/api/nmap/vuln/mark_safe', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                mac_address: itemToMarkSafe.value.mac_address,
+                                vuln_name: itemToMarkSafe.value.vuln_name
+                            })
+                        });
+                        const data = await res.json();
+                        snackbarText.value = data.message;
+                        snackbarColor.value = data.success ? 'success' : 'error';
+                        snackbar.value = true;
+                        if (data.success) {
+                            confirmSafeDialog.value = false;
+                            loadVulnResults();
+                        }
+                    } catch (e) {
+                        snackbarText.value = '标记失败: ' + e;
+                        snackbarColor.value = 'error';
+                        snackbar.value = true;
+                    } finally {
+                        confirmSafeLoading.value = false;
+                    }
+                };
+
+                onMounted(() => {
+                    loadVulnResults();
+                });
+
+                return {
+                    snackbar, snackbarText, snackbarColor,
+                    vulnResults, vulnLoading, vulnStats, vulnHeaders,
+                    filters, resultOptions, vulnNameOptions, osTagsOptions, filteredVulnResults,
+                    vulnScanning, startVulnScan, markAsSafe, confirmSafeDialog, itemToMarkSafe,
+                    confirmMarkAsSafe, confirmSafeLoading,
+                    loadVulnResults, getVulnColor, getVulnText
+                };
+            }
+        });
+
+        app.use(vuetify);
+        app.mount('#app');
+        document.getElementById('app-loading').style.display = 'none';
+    </script>
+    {% endraw %}
+</body>
+
+</html>

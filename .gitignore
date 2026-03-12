@@ -1,71 +1,13 @@
-# Breezell
-.breezell
+# 忽略 Nmap 程序目录
+nmap/Nmap/
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment
-venv/
-env/
-ENV/
-
-# Environment Variables
-.env
-.env.local
-
-# Database
+# 忽略 hfish 程序目录
+hfish-3.3.6-windows-amd64/
+.claude/
+# 忽略数据库文件
 *.db
-*.sqlite
-*.sqlite3
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Node
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-.pnpm-store/
-
-# Build
-dist/
-build/
-*.local
-backend/generated_audio/
-backend/generated_reports/
-
-# Logs
-logs/
-*.log
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-资料/
+# 忽略 Python 缓存
+__pycache__/
+*.pyc
+*.pyo

@@ -1,1 +1,0 @@
-<nmaprun><host><status state="up"/><ports><port protocol="tcp" portid="443"><state state="open"/><service name="https" product="nginx" version="1.18.0"/></port></ports></host></nmaprun>

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>安全监控平台 - AimiGuard</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <link href="/static/css/vuetify.min.css" rel="stylesheet">
+    <link href="/static/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="/static/css/inter.css" rel="stylesheet">
+    <style>
+        [v-cloak] {
+            display: none;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: #0B0F19;
+        }
+
+        .v-application {
+            background-color: transparent !important;
+            background-image:
+                radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(0, 229, 255, 0.08), transparent 25%) !important;
+            background-attachment: fixed !important;
+        }
+
+        .v-card {
+            background: rgba(26, 34, 53, 0.7) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+            transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+        }
+
+        .v-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 229, 255, 0.1) !important;
+            border: 1px solid rgba(0, 229, 255, 0.2) !important;
+        }
+
+        .v-data-table,
+        .v-table,
+        .v-data-table-footer {
+            background: transparent !important;
+        }
+
+        .custom-app-bar {
+            background: linear-gradient(90deg, #0B0F19 0%, #1A2235 100%) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+        }
+
+        .text-h4 {
+            font-weight: 700 !important;
+            letter-spacing: 0.5px !important;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Vue 加载前的显示 -->
+    <div id="app-loading"
+        style="background:#0B0F19;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <div
+            style="width: 50px; height: 50px; border: 3px solid rgba(0, 229, 255, 0.1); border-radius: 50%; border-top-color: #00E5FF; animation: spin 1s ease-in-out infinite; margin-bottom: 20px;">
+        </div>
+        <div style="color:#00E5FF;font-size:1.2rem;font-family:'Inter',sans-serif;letter-spacing:2px;font-weight:500;">
+            AimiGuard System</div>
+        <style>
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+        </style>
+    </div>
+
+    {% raw %}
+    <div id="app" v-cloak>
+        <v-app>
+            <!-- 导航栏 -->
+            <v-app-bar class="custom-app-bar" density="compact" elevation="0">
+                <v-app-bar-title style="color: #00E5FF; font-weight: 600; letter-spacing: 1px;">
+                    <v-icon class="mr-2" color="primary">mdi-shield-check-outline</v-icon>
+                    AimiGuard 安全监控
+                </v-app-bar-title>
+                <v-spacer></v-spacer>
+                <v-btn variant="text" href="/">
+                    <v-icon start>mdi-view-dashboard</v-icon>
+                    仪表盘
+                </v-btn>
+                <v-btn variant="text" href="/hfish">
+                    <v-icon start>mdi-alert-circle</v-icon>
+                    攻击日志
+                </v-btn>
+                <v-btn variant="text" href="/nmap">
+                    <v-icon start>mdi-radar</v-icon>
+                    网络扫描
+                </v-btn>
+                <v-btn variant="text" href="/vuln">
+                    <v-icon start>mdi-bug-outline</v-icon>
+                    漏洞扫描
+                </v-btn>
+                <v-btn variant="text" href="/settings">
+                    <v-icon start>mdi-cog</v-icon>
+                    设置
+                </v-btn>
+            </v-app-bar>
+
+            <!-- 主内容 -->
+            <v-main>
+                <v-container fluid class="d-flex flex-column"
+                    style="min-height: calc(100vh - 48px); padding-bottom: 24px;">
+                    <!-- 统计卡片 -->
+                    <v-row class="mb-4">
+                        <v-col cols="12" md="4">
+                            <v-card class="pa-4" style="border-left: 4px solid #3B82F6;">
+                                <div class="d-flex justify-space-between align-center">
+                                    <div>
+                                        <div class="text-subtitle-2 text-grey">攻击日志总数</div>
+                                        <div class="text-h4 font-weight-bold" style="color: #3B82F6;">{{
+                                            stats.hfish.total }}</div>
+                                    </div>
+                                    <v-icon size="48" color="info" style="opacity: 0.8">mdi-history</v-icon>
+                                </div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="12" md="4">
+                            <v-card class="pa-4" style="border-left: 4px solid #10B981;">
+                                <div class="d-flex justify-space-between align-center">
+                                    <div>
+                                        <div class="text-subtitle-2 text-grey">在线主机</div>
+                                        <div class="text-h4 font-weight-bold" style="color: #10B981;">{{
+                                            stats.nmap.online }}</div>
+                                    </div>
+                                    <v-icon size="48" color="success" style="opacity: 0.8">mdi-server-network</v-icon>
+                                </div>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="12" md="4">
+                            <v-card class="pa-4" style="border-left: 4px solid #EF4444;">
+                                <div class="d-flex justify-space-between align-center">
+                                    <div>
+                                        <div class="text-subtitle-2 text-grey">高危攻击</div>
+                                        <div class="text-h4 font-weight-bold" style="color: #EF4444;">{{
+                                            stats.hfish.high }}</div>
+                                    </div>
+                                    <v-icon size="48" color="error"
+                                        style="opacity: 0.8">mdi-shield-alert-outline</v-icon>
+                                </div>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <v-row class="flex-grow-1">
+                        <v-col cols="12" md="8" class="d-flex flex-column">
+                            <v-card class="flex-grow-1 d-flex flex-column">
+                                <v-card-title>攻击趋势 (最近7天)</v-card-title>
+                                <v-card-text class="flex-grow-1" style="position: relative; min-height: 250px;">
+                                    <canvas id="attackTrendChart"></canvas>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="12" md="4" class="d-flex flex-column">
+                            <v-card class="flex-grow-1 d-flex flex-column">
+                                <v-card-title>威胁等级分布</v-card-title>
+                                <v-card-text class="flex-grow-1" style="position: relative; min-height: 250px;">
+                                    <canvas id="threatChart"></canvas>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <v-row class="flex-grow-1 mt-4">
+                        <v-col cols="12" md="6" class="d-flex flex-column">
+                            <v-card class="flex-grow-1 d-flex flex-column">
+                                <v-card-title>热门攻击服务</v-card-title>
+                                <v-card-text class="flex-grow-1" style="position: relative; min-height: 250px;">
+                                    <canvas id="serviceChart"></canvas>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                        <v-col cols="12" md="6" class="d-flex flex-column">
+                            <v-card class="flex-grow-1 d-flex flex-column">
+                                <v-card-title>热门攻击IP</v-card-title>
+                                <v-card-text class="flex-grow-1" style="position: relative; min-height: 250px;">
+                                    <canvas id="ipChart"></canvas>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+                </v-container>
+            </v-main>
+        </v-app>
+    </div>
+
+    <script src="/static/js/vue.global.prod.js"></script>
+    <script src="/static/js/vuetify.min.js"></script>
+    <script src="/static/js/chart.umd.min.js"></script>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+        const { createVuetify } = Vuetify;
+
+        const vuetify = createVuetify({
+            theme: {
+                defaultTheme: 'dark',
+                themes: {
+                    dark: {
+                        colors: {
+                            primary: '#00E5FF',
+                            secondary: '#8B5CF6',
+                            accent: '#F472B6',
+                            error: '#EF4444',
+                            warning: '#F59E0B',
+                            info: '#3B82F6',
+                            success: '#10B981',
+                            background: '#0B0F19',
+                            surface: '#1A2235'
+                        }
+                    }
+                }
+            }
+        });
+
+        const app = createApp({
+            setup() {
+                const stats = ref({
+                    hfish: { total: 0, high: 0 },
+                    nmap: { online: 0 }
+                });
+
+                const loadStats = async () => {
+                    try {
+                        const [hfishRes, nmapRes] = await Promise.all([
+                            fetch('/api/hfish/stats'),
+                            fetch('/api/nmap/stats')
+                        ]);
+
+                        const hfishData = await hfishRes.json();
+                        const nmapData = await nmapRes.json();
+
+                        stats.value.hfish.total = hfishData.total || 0;
+                        const highThreat = hfishData.threat_stats?.find(t => t.level === '高危');
+                        stats.value.hfish.high = highThreat ? highThreat.count : 0;
+
+                        const onlineHost = nmapData.state_stats?.find(s => s.state === 'up');
+                        stats.value.nmap.online = onlineHost ? onlineHost.count : 0;
+
+                        // 绘制图表
+                        renderCharts(hfishData);
+                    } catch (e) {
+                        console.error('加载统计数据失败:', e);
+                    }
+                };
+
+                const renderCharts = (data) => {
+                    const threatColors = {
+                        '高危': '#EF4444',
+                        '中危': '#F59E0B',
+                        '低危': '#3B82F6',
+                        '信息': '#9CA3AF'
+                    };
+
+                    // 攻击趋势图
+                    new Chart(document.getElementById('attackTrendChart'), {
+                        type: 'line',
+                        data: {
+                            labels: data.time_stats?.map(s => s.date) || [],
+                            datasets: [{
+                                label: '攻击次数',
+                                data: data.time_stats?.map(s => s.count) || [],
+                                borderColor: '#00E5FF',
+                                backgroundColor: 'rgba(0, 229, 255, 0.15)',
+                                fill: true,
+                                tension: 0.4,
+                                pointBackgroundColor: '#00E5FF',
+                                pointBorderColor: '#1A2235',
+                                pointHoverRadius: 6
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 } }
+                            }
+                        }
+                    });
+
+                    // 威胁等级饼图
+                    new Chart(document.getElementById('threatChart'), {
+                        type: 'doughnut',
+                        data: {
+                            labels: data.threat_stats?.map(s => s.level) || [],
+                            datasets: [{
+                                data: data.threat_stats?.map(s => s.count) || [],
+                                backgroundColor: data.threat_stats?.map(s => threatColors[s.level] || '#9E9E9E') || []
+                            }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false }
+                    });
+
+                    // 服务柱状图
+                    new Chart(document.getElementById('serviceChart'), {
+                        type: 'bar',
+                        data: {
+                            labels: data.service_stats?.map(s => s.name) || [],
+                            datasets: [{
+                                label: '攻击次数',
+                                data: data.service_stats?.map(s => s.count) || [],
+                                backgroundColor: '#8B5CF6',
+                                borderRadius: 4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            indexAxis: 'y'
+                        }
+                    });
+
+                    // IP柱状图
+                    new Chart(document.getElementById('ipChart'), {
+                        type: 'bar',
+                        data: {
+                            labels: data.ip_stats?.map(s => s.ip) || [],
+                            datasets: [{
+                                label: '攻击次数',
+                                data: data.ip_stats?.map(s => s.count) || [],
+                                backgroundColor: '#EF4444',
+                                borderRadius: 4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            indexAxis: 'y'
+                        }
+                    });
+                };
+
+                onMounted(() => {
+                    loadStats();
+                });
+
+                return { stats };
+            }
+        });
+
+        app.use(vuetify);
+        app.mount('#app');
+        // 隐藏加载提示
+        document.getElementById('app-loading').style.display = 'none';
+    </script>
+    {% endraw %}
+</body>
+
+</html>

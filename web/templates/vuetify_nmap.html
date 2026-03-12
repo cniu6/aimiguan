@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网络扫描 - AimiGuard</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <link href="/static/css/vuetify.min.css" rel="stylesheet">
+    <link href="/static/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="/static/css/inter.css" rel="stylesheet">
+    <style>
+        [v-cloak] {
+            display: none;
+        }
+
+        .v-data-table td {
+            height: 44px !important;
+            padding: 4px 16px !important;
+            white-space: nowrap;
+        }
+
+        .v-data-table th {
+            font-weight: bold !important;
+            height: 44px !important;
+            background-color: rgba(255, 255, 255, 0.05) !important;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: #0B0F19;
+        }
+
+        .v-application {
+            background-color: transparent !important;
+            background-image:
+                radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(0, 229, 255, 0.08), transparent 25%) !important;
+            background-attachment: fixed !important;
+        }
+
+        .v-card {
+            background: rgba(26, 34, 53, 0.7) !important;
+            backdrop-filter: blur(12px) !important;
+            -webkit-backdrop-filter: blur(12px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
+            transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+        }
+
+        .v-card:hover {
+            box-shadow: 0 12px 40px rgba(0, 229, 255, 0.1) !important;
+            border: 1px solid rgba(0, 229, 255, 0.2) !important;
+        }
+
+        .v-data-table,
+        .v-table,
+        .v-data-table-footer {
+            background: transparent !important;
+        }
+
+        .custom-app-bar {
+            background: linear-gradient(90deg, #0B0F19 0%, #1A2235 100%) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+        }
+
+        .text-h4 {
+            font-weight: 700 !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app-loading"
+        style="background:#0B0F19;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <div
+            style="width: 50px; height: 50px; border: 3px solid rgba(0, 229, 255, 0.1); border-radius: 50%; border-top-color: #00E5FF; animation: spin 1s ease-in-out infinite; margin-bottom: 20px;">
+        </div>
+        <div style="color:#00E5FF;font-size:1.2rem;font-family:'Inter',sans-serif;letter-spacing:2px;font-weight:500;">
+            AimiGuard System</div>
+        <style>
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+        </style>
+    </div>
+
+    {% raw %}
+    <div id="app" v-cloak>
+        <v-app>
+            <v-app-bar class="custom-app-bar" density="compact" elevation="0">
+                <v-app-bar-title style="color: #00E5FF; font-weight: 600; letter-spacing: 1px;">
+                    <v-icon class="mr-2" color="primary">mdi-shield-check-outline</v-icon>
+                    AimiGuard 安全监控
+                </v-app-bar-title>
+                <v-spacer></v-spacer>
+                <v-btn variant="text" href="/">
+                    <v-icon start>mdi-view-dashboard</v-icon>
+                    仪表盘
+                </v-btn>
+                <v-btn variant="text" href="/hfish">
+                    <v-icon start>mdi-alert-circle</v-icon>
+                    攻击日志
+                </v-btn>
+                <v-btn variant="text" href="/nmap">
+                    <v-icon start>mdi-radar</v-icon>
+                    网络扫描
+                </v-btn>
+                <v-btn variant="text" href="/vuln">
+                    <v-icon start>mdi-bug-outline</v-icon>
+                    漏洞扫描
+                </v-btn>
+                <v-btn variant="text" href="/settings">
+                    <v-icon start>mdi-cog</v-icon>
+                    设置
+                </v-btn>
+            </v-app-bar>
+
+            <v-main>
+                <v-container fluid>
+                    <!-- 控制栏 -->
+                    <v-card class="mb-4">
+                        <v-card-text class="d-flex align-center">
+                            <v-select v-model="currentScanId" :items="scans" item-title="label" item-value="id"
+                                label="选择扫描记录" density="compact" variant="outlined" hide-details
+                                style="max-width: 300px;" class="mr-4"></v-select>
+                            <v-btn color="primary" @click="startScan" :loading="scanning">
+                                <v-icon start>mdi-radar</v-icon>
+                                手动扫描
+                            </v-btn>
+                            <v-spacer></v-spacer>
+                            <div class="text-grey">
+                                自动扫描: {{ scanEnabled ? '已启用' : '已禁用' }}
+                                <v-btn variant="text" size="small" href="/settings">前往设置</v-btn>
+                            </div>
+                        </v-card-text>
+                    </v-card>
+
+                    <!-- 统计 -->
+                    <v-row class="mb-4">
+                        <v-col cols="12" md="12">
+                            <v-card class="pa-4" style="border-left: 4px solid #10B981;">
+                                <div class="text-h4 font-weight-bold" style="color: #10B981;">{{ onlineCount }}</div>
+                                <div class="text-grey">在线主机</div>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+
+                    <!-- 主机列表 -->
+                    <v-card>
+                        <v-card-title class="d-flex align-center">
+                            扫描结果
+                            <v-spacer></v-spacer>
+                            <v-btn icon @click="loadHosts">
+                                <v-icon>mdi-refresh</v-icon>
+                            </v-btn>
+                        </v-card-title>
+
+                        <v-card-text>
+                            <v-row dense class="mb-2">
+                                <v-col cols="12" md="3">
+                                    <v-text-field v-model="nmapSearch" label="搜索" variant="outlined" density="compact"
+                                        prepend-inner-icon="mdi-magnify" clearable hide-details></v-text-field>
+                                </v-col>
+                                <v-col cols="6" md="2">
+                                    <v-select v-model="vendorFilter" :items="vendorOptions" label="厂商"
+                                        variant="outlined" density="compact" clearable hide-details></v-select>
+                                </v-col>
+                            </v-row>
+                        </v-card-text>
+
+                        <v-data-table :headers="headers" :items="filteredHosts" :loading="loading" :search="nmapSearch"
+                            :items-per-page="50">
+                            <template v-slot:item.ip="{ item }">
+                                <a href="#" class="text-primary text-decoration-none font-weight-bold"
+                                    @click.prevent="showPorts(item.raw || item)">
+                                    {{ item.ip }}
+                                </a>
+                            </template>
+                            <template v-slot:item.os_type="{ item }">
+                                <v-tooltip location="top" :text="item.os_type">
+                                    <template v-slot:activator="{ props }">
+                                        <div v-bind="props" class="text-truncate text-body-2"
+                                            style="max-width: 30vw; cursor: default;">
+                                            {{ item.os_type || '-' }}
+                                        </div>
+                                    </template>
+                                </v-tooltip>
+                            </template>
+                            <template v-slot:item.open_ports="{ item }">
+                                <template v-if="item.open_ports && item.open_ports.length > 0">
+                                    <v-chip v-for="port in item.open_ports.slice(0, 3)" :key="port" size="x-small"
+                                        class="mr-1" variant="tonal" color="primary">
+                                        {{ port }}
+                                    </v-chip>
+                                    <span v-if="item.open_ports.length > 3" class="text-caption text-grey">
+                                        +{{ item.open_ports.length - 3 }}
+                                    </span>
+                                </template>
+                                <span v-else class="text-grey">-</span>
+                            </template>
+                        </v-data-table>
+                    </v-card>
+                </v-container>
+            </v-main>
+
+            <!-- 端口详情对话框 -->
+            <v-dialog v-model="portDialog" max-width="600">
+                <v-card>
+                    <v-card-title>端口详情 - {{ currentHost?.ip }}</v-card-title>
+                    <v-card-text>
+                        <v-list>
+                            <v-list-item>
+                                <v-list-item-title>主机名</v-list-item-title>
+                                <v-list-item-subtitle>{{ currentHost?.hostname || '-' }}</v-list-item-subtitle>
+                            </v-list-item>
+                            <v-list-item>
+                                <v-list-item-title>MAC地址</v-list-item-title>
+                                <v-list-item-subtitle>{{ currentHost?.mac_address || '-' }}</v-list-item-subtitle>
+                            </v-list-item>
+                            <v-list-item>
+                                <v-list-item-title>厂商</v-list-item-title>
+                                <v-list-item-subtitle>{{ currentHost?.vendor || '-' }}</v-list-item-subtitle>
+                            </v-list-item>
+                        </v-list>
+                        <div class="d-flex align-center mt-4 mb-2">
+                            <v-icon color="primary" class="mr-2">mdi-lan-connect</v-icon>
+                            <span class="text-subtitle-1 font-weight-bold">开放端口与服务 ({{ currentHost?.services?.length ||
+                                0 }})</span>
+                        </div>
+                        <v-divider class="mb-4"></v-divider>
+
+                        <div v-if="currentHost?.services && currentHost.services.length > 0">
+                            <v-card variant="outlined" class="mb-2 bg-grey-darken-4" v-for="s in currentHost.services"
+                                :key="s.port">
+                                <v-card-text class="d-flex align-center py-2">
+                                    <v-chip size="small" color="primary" class="mr-4 font-weight-bold"
+                                        style="min-width: 60px; justify-content: center;">
+                                        {{ s.port }}
+                                    </v-chip>
+                                    <span class="text-body-1">{{ s.service || '未知服务' }}</span>
+                                </v-card-text>
+                            </v-card>
+                        </div>
+                        <v-alert v-else type="info" variant="tonal" density="compact" icon="mdi-information">
+                            未发现开放端口
+                        </v-alert>
+                    </v-card-text>
+                    <v-card-actions>
+                        <v-spacer></v-spacer>
+                        <v-btn color="primary" variant="text" @click="portDialog = false">关闭</v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
+
+            <!-- 消息提示 -->
+            <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000">
+                {{ snackbarText }}
+            </v-snackbar>
+        </v-app>
+    </div>
+
+    <script src="/static/js/vue.global.prod.js"></script>
+    <script src="/static/js/vuetify.min.js"></script>
+
+    <script>
+        const { createApp, ref, computed, watch, onMounted } = Vue;
+        const { createVuetify } = Vuetify;
+
+        const vuetify = createVuetify({
+            theme: {
+                defaultTheme: 'dark',
+                themes: {
+                    dark: {
+                        colors: {
+                            primary: '#00E5FF',
+                            secondary: '#8B5CF6',
+                            accent: '#F472B6',
+                            error: '#EF4444',
+                            warning: '#F59E0B',
+                            info: '#3B82F6',
+                            success: '#10B981',
+                            background: '#0B0F19',
+                            surface: '#1A2235'
+                        }
+                    }
+                }
+            }
+        });
+
+        const app = createApp({
+            setup() {
+                const loading = ref(false);
+                const scanning = ref(false);
+                const hosts = ref([]);
+                const scans = ref([]);
+                const currentScanId = ref(null);
+                const onlineCount = ref(0);
+                const scanEnabled = ref(false);
+
+                const snackbar = ref(false);
+                const snackbarText = ref('');
+                const snackbarColor = ref('success');
+
+                const portDialog = ref(false);
+                const currentHost = ref(null);
+
+                const headers = [
+                    { title: 'IP地址', key: 'ip', width: '150px' },
+                    { title: 'MAC地址', key: 'mac_address', width: '180px' },
+                    { title: '厂商', key: 'vendor', width: '200px' },
+                    { title: '系统版本', key: 'os_type', width: '200px' },
+                    { title: '开放端口', key: 'open_ports', width: '250px' },
+                    { title: '最后发现', key: 'last_seen', width: '180px' },
+                    { title: '', key: 'spacer', sortable: false }
+                ];
+
+                const loadScanList = async () => {
+                    try {
+                        const res = await fetch('/api/nmap/scans');
+                        const data = await res.json();
+                        scans.value = data.map(s => ({
+                            id: s.id,
+                            label: `#${s.id} - ${s.scan_time} (${s.hosts_count}台)`
+                        }));
+                        if (scans.value.length > 0 && !currentScanId.value) {
+                            currentScanId.value = scans.value[0].id;
+                        }
+                        // 扫描列表加载完后立即加载主机
+                        loadHosts();
+                    } catch (e) {
+                        console.error('加载扫描列表失败:', e);
+                    }
+                };
+
+                const loadHosts = async () => {
+                    loading.value = true;
+                    try {
+                        let url = '/api/nmap/hosts?limit=1000';
+                        if (currentScanId.value) url += `&scan_id=${currentScanId.value}`;
+                        const res = await fetch(url);
+                        hosts.value = await res.json();
+                        onlineCount.value = hosts.value.filter(h => h.state === 'up').length;
+                    } catch (e) {
+                        console.error('加载主机失败:', e);
+                    }
+                    loading.value = false;
+                };
+
+                const loadScanStatus = async () => {
+                    try {
+                        const res = await fetch('/api/settings');
+                        const data = await res.json();
+                        scanEnabled.value = data.nmap?.scan_enabled || false;
+                    } catch (e) {
+                        console.error('加载状态失败:', e);
+                    }
+                };
+
+                const startScan = async () => {
+                    scanning.value = true;
+                    try {
+                        await fetch('/api/nmap/scan', { method: 'POST' });
+                        snackbarText.value = '扫描任务已启动，请等待扫描完成后刷新';
+                        snackbarColor.value = 'success';
+                        snackbar.value = true;
+                        setTimeout(() => {
+                            loadScanList();
+                            loadHosts();
+                        }, 15000);
+                    } catch (e) {
+                        console.error('扫描失败:', e);
+                    }
+                    scanning.value = false;
+                };
+
+                const showPorts = (item) => {
+                    // 解析出纯粹的 JS 对象，脱离所有 Proxy 或响应式缓存的干扰
+                    let rawItem = item;
+                    if (item && item.raw) {
+                        rawItem = item.raw;
+                    }
+
+                    const originalHost = hosts.value.find(h => h.ip === rawItem.ip) || rawItem;
+
+                    // 深度克隆，彻底打破响应式追踪导致的渲染不更新问题
+                    currentHost.value = JSON.parse(JSON.stringify(originalHost));
+                    portDialog.value = true;
+                };
+
+                const nmapSearch = ref('');
+                const vendorFilter = ref(null);
+
+                const vendorOptions = computed(() => {
+                    const vendors = [...new Set(hosts.value.map(h => h.vendor).filter(Boolean))];
+                    return vendors.sort();
+                });
+
+                const filteredHosts = computed(() => {
+                    let result = hosts.value;
+                    if (vendorFilter.value) {
+                        result = result.filter(h => h.vendor === vendorFilter.value);
+                    }
+                    return result;
+                });
+
+                watch(currentScanId, loadHosts);
+
+                onMounted(() => {
+                    loadScanStatus();
+                    loadScanList();
+                });
+
+                return {
+                    loading, scanning, hosts, scans, currentScanId,
+                    onlineCount, scanEnabled, headers,
+                    snackbar, snackbarText, snackbarColor,
+                    portDialog, currentHost, showPorts,
+                    nmapSearch, vendorFilter, vendorOptions, filteredHosts,
+                    loadHosts, startScan
+                };
+            }
+        });
+
+        app.use(vuetify);
+        app.mount('#app');
+        document.getElementById('app-loading').style.display = 'none';
+    </script>
+    {% endraw %}
+</body>
+
+</html>
